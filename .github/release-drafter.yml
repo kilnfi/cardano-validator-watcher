@@ -1,0 +1,92 @@
+name-template: 'v$RESOLVED_VERSION'
+tag-template: 'v$RESOLVED_VERSION'
+version-template: '$MAJOR.$MINOR.$PATCH'
+version-resolver:
+  major:
+    labels:
+      - 'major'
+      - 'breaking'
+  minor:
+    labels:
+      - 'minor'
+      - 'enhancement'
+      - 'feature'
+      - 'feat'
+  patch:
+    labels:
+      - 'patch'
+      - 'fix'
+      - 'bugfix'
+      - 'bug'
+      - 'hotfix'
+  default: 'minor'
+
+categories:
+  - title: '⚠️ BREAKING CHANGES'
+    labels:
+      - 'breaking'
+  - title: '🚀 Features'
+    labels:
+      - 'feat'
+      - 'feature'
+      - 'enhancement'
+  - title: '🐞 Bug Fixes'
+    labels:
+      - 'fix'
+      - 'bugfix'
+      - 'bug'
+      - 'hotfix'
+  - title: '🧪 Tests'
+    label: 'test'
+  - title: '👗 Style'
+    labels:
+      - 'style'
+      - 'refactor'
+  - title: "🧰 Maintenance"
+    label: "chore"
+  - title: "📝 Documentation"
+    labels:
+      - 'docs'
+      - 'documentation'
+
+change-template: |
+  <details>
+    <summary>$TITLE @$AUTHOR (#$NUMBER)</summary>
+
+    $BODY
+  </details>
+
+template: |
+  ## 🔥 Highlights
+
+  Cardano Validator Watcher `$RESOLVED_VERSION` is a feature|patch release.
+  Users are encouraged to upgrade for the best experience.
+
+  $CHANGES
+
+autolabeler:
+  - label: 'breaking'
+    title:
+      - '/!:/i'
+  - label: 'chore'
+    title:
+      - '/^chore/i'
+  - label: 'fix'
+    title:
+      - '/^fix/i'
+  - label: 'feature'
+    title:
+      - '/^feat/i'
+  - label: 'documentation'
+    title:
+      - '/^docs/i'
+  - label: 'test'
+    title:
+      - '/^test/i'
+  - label: 'style'
+    title:
+      - '/^style/i'
+      - '/^refactor/i'
+  - label: 'release'
+    title:
+      - '/^release/i'
