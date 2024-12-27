@@ -24,5 +24,7 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
       - uses: release-drafter/release-drafter@v6
+        with:
+          commitish: main
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
