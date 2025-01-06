@@ -1,0 +1,6 @@
+with-expecter: true
+dir: "{{.InterfaceDir}}/mocks/"
+packages:
+  github.com/kilnfi/cardano-validator-watcher/internal/blockfrost:
+    interfaces:
+      Client:
