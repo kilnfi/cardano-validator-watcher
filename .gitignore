@@ -1,3 +1,5 @@
 config.yaml
 .codegpt
 bin/
+config/
+*.db*

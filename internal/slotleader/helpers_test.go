@@ -1,9 +1,7 @@
-package watcher
+package slotleader
 
 import (
-	"context"
 	"testing"
-	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/jmoiron/sqlx"
@@ -12,14 +10,11 @@ import (
 	"github.com/kilnfi/cardano-validator-watcher/internal/metrics"
 	"github.com/kilnfi/cardano-validator-watcher/internal/pools"
 	"github.com/prometheus/client_golang/prometheus"
-
-	slotleadermocks "github.com/kilnfi/cardano-validator-watcher/internal/slotleader/mocks"
 )
 
 type clients struct {
 	bf      *blockfrostmocks.MockClient
 	cardano *cardanomocks.MockCardanoClient
-	sl      *slotleadermocks.MockSlotLeader
 }
 
 type dbMockClient struct {
@@ -53,7 +48,6 @@ func setupClients(t *testing.T) *clients {
 	return &clients{
 		bf:      blockfrostmocks.NewMockClient(t),
 		cardano: cardanomocks.NewMockCardanoClient(t),
-		sl:      slotleadermocks.NewMockSlotLeader(t),
 	}
 }
 
@@ -95,14 +89,4 @@ func setupRegistry(t *testing.T) *struct {
 		metricsExpectedOutput: "",
 		metricsUnderTest:      []string{},
 	}
-}
-
-func setupContextWithTimeout(t *testing.T, d time.Duration) context.Context {
-	t.Helper()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		time.AfterFunc(d, cancel)
-	}()
-	return ctx
 }
