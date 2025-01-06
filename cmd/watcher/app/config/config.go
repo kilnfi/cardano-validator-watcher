@@ -11,9 +11,17 @@ type Config struct {
 	Pools                pools.Pools          `mapstructure:"pools"`
 	HTTP                 HTTPConfig           `mapstructure:"http"`
 	Network              string               `mapstructure:"network"`
+	Cardano              CardanoConfig        `mapstructure:"cardano"`
+	Database             DatabaseConfig       `mapstructure:"database"`
 	Blockfrost           BlockFrostConfig     `mapstructure:"blockfrost"`
+	BlockWatcherConfig   BlockWatcherConfig   `mapstructure:"block-watcher"`
 	PoolWatcherConfig    PoolWatcherConfig    `mapstructure:"pool-watcher"`
 	NetworkWatcherConfig NetworkWatcherConfig `mapstructure:"network-watcher"`
+}
+
+type BlockWatcherConfig struct {
+	Enabled         bool `mapstructure:"enabled"`
+	RefreshInterval int  `mapstructure:"refresh-interval"`
 }
 
 type PoolWatcherConfig struct {
@@ -36,6 +44,16 @@ type BlockFrostConfig struct {
 	Endpoint    string `mapstructure:"endpoint"`
 	MaxRoutines int    `mapstructure:"max-routines"`
 	Timeout     int    `mapstructure:"timeout"`
+}
+
+type CardanoConfig struct {
+	ConfigDir  string `mapstructure:"config-dir"`
+	Timezone   string `mapstructure:"timezone"`
+	SocketPath string `mapstructure:"socket-path"`
+}
+
+type DatabaseConfig struct {
+	Path string `mapstructure:"path"`
 }
 
 func (c *Config) Validate() error {

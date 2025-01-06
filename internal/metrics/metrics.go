@@ -20,6 +20,13 @@ type Collection struct {
 	PoolsPledgeMet                    *prometheus.GaugeVec
 	PoolsSaturationLevel              *prometheus.GaugeVec
 	MonitoredValidatorsCount          *prometheus.GaugeVec
+	MissedBlocks                      *prometheus.CounterVec
+	ConsecutiveMissedBlocks           *prometheus.GaugeVec
+	OrphanedBlocks                    *prometheus.CounterVec
+	ValidatedBlocks                   *prometheus.CounterVec
+	ExpectedBlocks                    *prometheus.GaugeVec
+	LatestSlotProcessedByBlockWatcher prometheus.Gauge
+	NextSlotLeader                    *prometheus.GaugeVec
 }
 
 func NewCollection() *Collection {
@@ -127,6 +134,61 @@ func NewCollection() *Collection {
 			},
 			[]string{"status"},
 		),
+		MissedBlocks: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: "cardano_validator_watcher",
+				Name:      "missed_blocks_total",
+				Help:      "number of missed blocks in the current epoch",
+			},
+			[]string{"pool_name", "pool_id", "pool_instance", "epoch"},
+		),
+		ConsecutiveMissedBlocks: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: "cardano_validator_watcher",
+				Name:      "consecutive_missed_blocks",
+				Help:      "number of consecutive missed blocks in a row",
+			},
+			[]string{"pool_name", "pool_id", "pool_instance", "epoch"},
+		),
+		ValidatedBlocks: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: "cardano_validator_watcher",
+				Name:      "validated_blocks_total",
+				Help:      "number of validated blocks in the current epoch",
+			},
+			[]string{"pool_name", "pool_id", "pool_instance", "epoch"},
+		),
+		OrphanedBlocks: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: "cardano_validator_watcher",
+				Name:      "orphaned_blocks_total",
+				Help:      "number of orphaned blocks in the current epoch",
+			},
+			[]string{"pool_name", "pool_id", "pool_instance", "epoch"},
+		),
+		ExpectedBlocks: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: "cardano_validator_watcher",
+				Name:      "expected_blocks",
+				Help:      "number of expected blocks in the current epoch",
+			},
+			[]string{"pool_name", "pool_id", "pool_instance", "epoch"},
+		),
+		LatestSlotProcessedByBlockWatcher: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Namespace: "cardano_validator_watcher",
+				Name:      "latest_slot_processed_by_block_watcher",
+				Help:      "latest slot processed by the block watcher",
+			},
+		),
+		NextSlotLeader: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: "cardano_validator_watcher",
+				Name:      "next_slot_leader",
+				Help:      "next slot leader for each monitored pool",
+			},
+			[]string{"pool_name", "pool_id", "pool_instance", "epoch"},
+		),
 	}
 }
 
@@ -147,4 +209,11 @@ func (m *Collection) MustRegister(reg prometheus.Registerer) {
 	reg.MustRegister(m.PoolsPledgeMet)
 	reg.MustRegister(m.PoolsSaturationLevel)
 	reg.MustRegister(m.MonitoredValidatorsCount)
+	reg.MustRegister(m.MissedBlocks)
+	reg.MustRegister(m.ConsecutiveMissedBlocks)
+	reg.MustRegister(m.ValidatedBlocks)
+	reg.MustRegister(m.OrphanedBlocks)
+	reg.MustRegister(m.ExpectedBlocks)
+	reg.MustRegister(m.LatestSlotProcessedByBlockWatcher)
+	reg.MustRegister(m.NextSlotLeader)
 }

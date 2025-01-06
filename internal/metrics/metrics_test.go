@@ -22,12 +22,18 @@ func TestMustRegister(t *testing.T) {
 	metrics.PoolsPledgeMet.WithLabelValues("pool_name", "pool_id", "pool_instance").Set(1)
 	metrics.PoolsSaturationLevel.WithLabelValues("pool_name", "pool_id", "pool_instance").Set(85)
 	metrics.MonitoredValidatorsCount.WithLabelValues("active").Set(10)
+	metrics.MissedBlocks.WithLabelValues("pool_name", "pool_id", "pool_instance", "epoch").Inc()
+	metrics.ConsecutiveMissedBlocks.WithLabelValues("pool_name", "pool_id", "pool_instance", "epoch").Inc()
+	metrics.ValidatedBlocks.WithLabelValues("pool_name", "pool_id", "pool_instance", "epoch").Inc()
+	metrics.OrphanedBlocks.WithLabelValues("pool_name", "pool_id", "pool_instance", "epoch").Inc()
+	metrics.ExpectedBlocks.WithLabelValues("pool_name", "pool_id", "pool_instance", "epoch").Set(2)
+	metrics.NextSlotLeader.WithLabelValues("pool_name", "pool_id", "pool_instance", "epoch").Set(2)
 
 	registry := prometheus.NewRegistry()
 	metrics.MustRegister(registry)
 
 	// The expected number of metrics to be registered, based on the definitions provided in the Collection struct.
-	expectedMetricsCount := 14
+	expectedMetricsCount := 21
 
 	var totalRegisteredMetrics int
 	size, _ := registry.Gather()

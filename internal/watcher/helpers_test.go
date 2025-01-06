@@ -5,14 +5,26 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/jmoiron/sqlx"
 	blockfrostmocks "github.com/kilnfi/cardano-validator-watcher/internal/blockfrost/mocks"
+	cardanomocks "github.com/kilnfi/cardano-validator-watcher/internal/cardano/mocks"
 	"github.com/kilnfi/cardano-validator-watcher/internal/metrics"
 	"github.com/kilnfi/cardano-validator-watcher/internal/pools"
 	"github.com/prometheus/client_golang/prometheus"
+
+	slotleadermocks "github.com/kilnfi/cardano-validator-watcher/internal/slotleader/mocks"
 )
 
 type clients struct {
-	bf *blockfrostmocks.MockClient
+	bf      *blockfrostmocks.MockClient
+	cardano *cardanomocks.MockCardanoClient
+	sl      *slotleadermocks.MockSlotLeader
+}
+
+type dbMockClient struct {
+	db   *sqlx.DB
+	mock sqlmock.Sqlmock
 }
 
 func setupPools(t *testing.T) pools.Pools {
@@ -39,7 +51,24 @@ func setupClients(t *testing.T) *clients {
 	t.Helper()
 
 	return &clients{
-		bf: blockfrostmocks.NewMockClient(t),
+		bf:      blockfrostmocks.NewMockClient(t),
+		cardano: cardanomocks.NewMockCardanoClient(t),
+		sl:      slotleadermocks.NewMockSlotLeader(t),
+	}
+}
+
+func setupDB(t *testing.T) *dbMockClient {
+	t.Helper()
+
+	mockdb, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+	if err != nil {
+		t.Fatalf("failed to create mock: %v", err)
+	}
+
+	db := sqlx.NewDb(mockdb, "sqlite3")
+	return &dbMockClient{
+		db:   db,
+		mock: mock,
 	}
 }
 
