@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/kilnfi/cardano-validator-watcher/internal/metrics"
+	"github.com/kilnfi/cardano-validator-watcher/internal/watcher"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,8 +21,10 @@ func TestDefaultHandler(t *testing.T) {
 		r := httptest.NewRequest(http.MethodGet, "/", nil)
 		w := httptest.NewRecorder()
 
+		healthStore := watcher.NewHealthStore()
 		server, err := New(
 			nil,
+			healthStore,
 		)
 
 		require.NoError(t, err)
@@ -35,8 +38,10 @@ func TestDefaultHandler(t *testing.T) {
 		r := httptest.NewRequest(http.MethodGet, "/fake", nil)
 		w := httptest.NewRecorder()
 
+		healthStore := watcher.NewHealthStore()
 		server, err := New(
 			nil,
+			healthStore,
 		)
 
 		require.NoError(t, err)
@@ -54,8 +59,10 @@ func TestLiveProbe(t *testing.T) {
 		r := httptest.NewRequest(http.MethodGet, "/livez", nil)
 		w := httptest.NewRecorder()
 
+		healthStore := watcher.NewHealthStore()
 		server, err := New(
 			nil,
+			healthStore,
 		)
 		require.NoError(t, err)
 		server.router.ServeHTTP(w, r)
@@ -73,13 +80,32 @@ func TestReadyProbe(t *testing.T) {
 		r := httptest.NewRequest(http.MethodGet, "/readyz", nil)
 		w := httptest.NewRecorder()
 
+		healthStore := watcher.NewHealthStore()
+		healthStore.SetHealth(true)
 		server, err := New(
 			nil,
+			healthStore,
 		)
 		require.NoError(t, err)
 		server.router.ServeHTTP(w, r)
 
 		assert.Equal(t, http.StatusOK, w.Code)
+	})
+
+	t.Run("SadPath_ReadyProbeIsNotReady", func(t *testing.T) {
+		r := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+		w := httptest.NewRecorder()
+
+		healthStore := watcher.NewHealthStore()
+		healthStore.SetHealth(false)
+		server, err := New(
+			nil,
+			healthStore,
+		)
+		require.NoError(t, err)
+		server.router.ServeHTTP(w, r)
+
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
 	})
 }
 
@@ -96,8 +122,10 @@ func TestMetricsHandler(t *testing.T) {
 		metrics := metrics.NewCollection()
 		metrics.MustRegister(registry)
 
+		healthStore := watcher.NewHealthStore()
 		server, err := New(
 			registry,
+			healthStore,
 		)
 
 		require.NoError(t, err)

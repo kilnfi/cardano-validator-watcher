@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kilnfi/cardano-validator-watcher/internal/watcher"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -23,8 +24,10 @@ func TestNewServer(t *testing.T) {
 	t.Run("WithOptions", func(t *testing.T) {
 		t.Parallel()
 
+		healthStore := watcher.NewHealthStore()
 		server, err := New(
 			nil,
+			healthStore,
 			WithHost(DefaultHost),
 			WithPort(DefaultPort),
 			WithReadTimeout(DefaultReadTimeout),
@@ -40,8 +43,10 @@ func TestNewServer(t *testing.T) {
 	t.Run("WithDefaultOptions", func(t *testing.T) {
 		t.Parallel()
 
+		healthStore := watcher.NewHealthStore()
 		server, err := New(
 			nil,
+			healthStore,
 			WithHost(ServerDefaultHost),
 			WithPort(ServerDefaultPort),
 			WithReadTimeout(ServerDefaultReadTimeout),
@@ -57,8 +62,10 @@ func TestNewServer(t *testing.T) {
 
 func TestStartServer(t *testing.T) {
 	t.Parallel()
+	healthStore := watcher.NewHealthStore()
 	server, err := New(
 		nil,
+		healthStore,
 		WithHost(DefaultHost),
 		WithPort(DefaultPort),
 		WithReadTimeout(DefaultReadTimeout),

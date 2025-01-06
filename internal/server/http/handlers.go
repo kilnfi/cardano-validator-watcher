@@ -3,17 +3,21 @@ package http
 import (
 	"log/slog"
 	"net/http"
+
+	"github.com/kilnfi/cardano-validator-watcher/internal/watcher"
 )
 
 // Handler represents the HTTP handlers for the server
 type Handler struct {
-	logger *slog.Logger
+	logger      *slog.Logger
+	healthStore *watcher.HealthStore
 }
 
 // NewHandler returns a new Handler
-func NewHandler(logger *slog.Logger) *Handler {
+func NewHandler(logger *slog.Logger, healthStore *watcher.HealthStore) *Handler {
 	return &Handler{
-		logger: logger,
+		logger:      logger,
+		healthStore: healthStore,
 	}
 }
 
@@ -38,6 +42,10 @@ func (h *Handler) LiveProbe(w http.ResponseWriter, _ *http.Request) {
 // If the service is ready, it returns a 200 OK status
 // If the service is not ready, it returns a 500 Internal Server Error status
 func (h *Handler) ReadyProbe(w http.ResponseWriter, _ *http.Request) {
+	if !h.healthStore.GetHealth() {
+		http.Error(w, "Health KO", http.StatusInternalServerError)
+		return
+	}
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("Health OK"))
 }

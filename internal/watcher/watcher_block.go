@@ -38,6 +38,7 @@ type BlockWatcher struct {
 	pools             pools.Pools
 	poolStats         pools.PoolStats
 	db                *sqlx.DB
+	healthStore       *HealthStore
 	opts              BlockWatcherOptions
 }
 
@@ -51,6 +52,7 @@ func NewBlockWatcher(
 	pools pools.Pools,
 	metrics *metrics.Collection,
 	db *sqlx.DB,
+	healthStore *HealthStore,
 	opts BlockWatcherOptions,
 ) *BlockWatcher {
 	logger := slog.With(
@@ -68,6 +70,7 @@ func NewBlockWatcher(
 		poolStats:         pools.GetPoolStats(),
 		state:             state,
 		db:                db,
+		healthStore:       healthStore,
 		opts:              opts,
 	}
 }
@@ -97,15 +100,22 @@ func (w *BlockWatcher) Start(ctx context.Context) error {
 
 	ticker := time.NewTicker(w.opts.RefreshInterval)
 	defer ticker.Stop()
+	var previousHealthStatus bool
 
 	for {
-		err := w.start(ctx)
-		if err != nil {
-			var slotLeaderRefreshError *slotleader.ErrSlotLeaderRefresh
-			if errors.As(err, &slotLeaderRefreshError) {
-				return err
+		currentHealthStatus := w.healthStore.GetHealth()
+		w.handleHealthTransition(previousHealthStatus, currentHealthStatus)
+		previousHealthStatus = currentHealthStatus
+
+		if currentHealthStatus {
+			err := w.start(ctx)
+			if err != nil {
+				var slotLeaderRefreshError *slotleader.ErrSlotLeaderRefresh
+				if errors.As(err, &slotLeaderRefreshError) {
+					return err
+				}
+				w.logger.Error("watcher started but failed with the following error", slog.String("error", err.Error()))
 			}
-			w.logger.Error("watcher started but failed with the following error", slog.String("error", err.Error()))
 		}
 
 		select {
@@ -114,6 +124,21 @@ func (w *BlockWatcher) Start(ctx context.Context) error {
 			return fmt.Errorf("context done in watcher: %w", ctx.Err())
 		case <-ticker.C:
 			continue
+		}
+	}
+}
+
+// handleHealthTransition handles the transition of the block watcher's health status.
+// It compares the previous and current health states, and logs a warning if the block watcher
+// is not ready, or an info message if it is ready.
+func (w *BlockWatcher) handleHealthTransition(previous bool, current bool) {
+	if previous != current {
+		if !w.healthStore.GetHealth() {
+			w.logger.Warn(
+				"💔 block watcher is not ready.",
+			)
+		} else {
+			w.logger.Info("💚 block watcher is ready")
 		}
 	}
 }

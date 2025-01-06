@@ -148,11 +148,31 @@ func TestNetworkWatcher_Start(t *testing.T) {
 			Network:         "preprod",
 			RefreshInterval: time.Second * 15,
 		}
-		watcher := NewNetworkWatcher(clients.bf, registry.metrics, options)
+		healthStore := NewHealthStore()
+		healthStore.SetHealth(true)
+		watcher := NewNetworkWatcher(clients.bf, registry.metrics, healthStore, options)
 		err := watcher.Start(ctx)
 		require.ErrorIs(t, err, context.Canceled)
 		b := bytes.NewBufferString(registry.metricsExpectedOutput)
 		err = testutil.CollectAndCompare(registry.registry, b, registry.metricsUnderTest...)
 		require.NoError(t, err)
+	})
+
+	t.Run("SadPath_WatcherIsNotReady", func(t *testing.T) {
+		t.Parallel()
+
+		clients := setupClients(t)
+		registry := setupRegistry(t)
+
+		ctx := setupContextWithTimeout(t, time.Second*30)
+		options := NetworkWatcherOptions{
+			Network:         "preprod",
+			RefreshInterval: time.Second * 15,
+		}
+		healthStore := NewHealthStore()
+		healthStore.SetHealth(false)
+		watcher := NewNetworkWatcher(clients.bf, registry.metrics, healthStore, options)
+		err := watcher.Start(ctx)
+		require.ErrorIs(t, err, context.Canceled)
 	})
 }
