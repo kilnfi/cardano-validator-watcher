@@ -10,7 +10,6 @@ import (
 	"github.com/blockfrost/blockfrost-go"
 	bfMocks "github.com/kilnfi/cardano-validator-watcher/internal/blockfrost/mocks"
 	"github.com/kilnfi/cardano-validator-watcher/internal/metrics"
-	"github.com/kilnfi/cardano-validator-watcher/internal/pools"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/mock"
@@ -35,26 +34,6 @@ cardano_validator_watcher_pool_relays{pool_id="pool-0",pool_instance="pool-0",po
 cardano_validator_watcher_pool_saturation_level{pool_id="pool-0",pool_instance="pool-0",pool_name="pool-0"} %f
 `
 )
-
-func setupPools(t *testing.T) pools.Pools {
-	t.Helper()
-	return pools.Pools{
-		{
-			ID:       "pool-0",
-			Instance: "pool-0",
-			Key:      "key",
-			Name:     "pool-0",
-			Exclude:  false,
-		},
-		{
-			ID:       "pool-1",
-			Instance: "pool-1",
-			Key:      "key",
-			Name:     "pool-1",
-			Exclude:  true,
-		},
-	}
-}
 
 func TestPoolWatcher_Start(t *testing.T) {
 	t.Parallel()

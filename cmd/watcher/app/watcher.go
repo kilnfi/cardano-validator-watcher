@@ -82,6 +82,8 @@ func NewWatcherCommand() *cobra.Command {
 	cmd.Flags().IntP("blockfrost-timeout", "", 60, "Timeout for requests to the Blockfrost API (in seconds)")
 	cmd.Flags().BoolP("pool-watcher-enabled", "", true, "Enable pool watcher")
 	cmd.Flags().IntP("pool-watcher-refresh-interval", "", 60, "Interval at which the pool watcher collects data about the monitored pools (in seconds)")
+	cmd.Flags().BoolP("network-watcher-enabled", "", true, "Enable network watcher")
+	cmd.Flags().IntP("network-watcher-refresh-interval", "", 60, "Interval at which the network watcher collects data about the network (in seconds)")
 
 	// bind flag to viper
 	checkError(viper.BindPFlag("log-level", cmd.Flag("log-level")), "unable to bind log-level flag")
@@ -94,6 +96,8 @@ func NewWatcherCommand() *cobra.Command {
 	checkError(viper.BindPFlag("blockfrost.timeout", cmd.Flag("blockfrost-timeout")), "unable to bind blockfrost-timeout flag")
 	checkError(viper.BindPFlag("pool-watcher.enabled", cmd.Flag("pool-watcher-enabled")), "unable to bind pool-watcher-enabled flag")
 	checkError(viper.BindPFlag("pool-watcher.refresh-interval", cmd.Flag("pool-watcher-refresh-interval")), "unable to bind pool-watcher-refresh-interval flag")
+	checkError(viper.BindPFlag("network-watcher.enabled", cmd.Flag("network-watcher-enabled")), "unable to bind network-watcher-enabled flag")
+	checkError(viper.BindPFlag("network-watcher.refresh-interval", cmd.Flag("network-watcher-refresh-interval")), "unable to bind network-watcher-refresh-interval flag")
 
 	return cmd
 }
@@ -153,6 +157,11 @@ func run(_ *cobra.Command, _ []string) error {
 	// Start HTTP server
 	if err := startHTTPServer(eg, registry); err != nil {
 		return fmt.Errorf("unable to start http server: %w", err)
+	}
+
+	// Start Network Watcher
+	if cfg.NetworkWatcherConfig.Enabled {
+		startNetworkWatcher(ctx, eg, blockfrost, metrics)
 	}
 
 	// Start Pool Watcher
@@ -241,6 +250,30 @@ func startPoolWatcher(
 		}
 		if err := poolWatcher.Start(ctx); err != nil {
 			return fmt.Errorf("unable to start pool watcher: %w", err)
+		}
+		return nil
+	})
+}
+
+func startNetworkWatcher(
+	ctx context.Context,
+	eg *errgroup.Group,
+	blockfrost blockfrost.Client,
+	metrics *metrics.Collection,
+) {
+	eg.Go(func() error {
+		options := watcher.NetworkWatcherOptions{
+			// to change
+			RefreshInterval: time.Second * time.Duration(cfg.PoolWatcherConfig.RefreshInterval),
+			Network:         cfg.Network,
+		}
+		logger.Info(
+			"starting watcher",
+			slog.String("component", "network-watcher"),
+		)
+		networkWatcher := watcher.NewNetworkWatcher(blockfrost, metrics, options)
+		if err := networkWatcher.Start(ctx); err != nil {
+			return fmt.Errorf("unable to start network watcher: %w", err)
 		}
 		return nil
 	})

@@ -17,6 +17,7 @@ func TestMustRegister(t *testing.T) {
 	metrics := NewCollection()
 
 	// register metrics that need labels
+	metrics.ChainID.WithLabelValues("test_chain").Set(1)
 	metrics.RelaysPerPool.WithLabelValues("pool_name", "pool_id", "pool_instance").Set(5)
 	metrics.PoolsPledgeMet.WithLabelValues("pool_name", "pool_id", "pool_instance").Set(1)
 	metrics.PoolsSaturationLevel.WithLabelValues("pool_name", "pool_id", "pool_instance").Set(85)
@@ -26,7 +27,7 @@ func TestMustRegister(t *testing.T) {
 	metrics.MustRegister(registry)
 
 	// The expected number of metrics to be registered, based on the definitions provided in the Collection struct.
-	expectedMetricsCount := 4
+	expectedMetricsCount := 14
 
 	var totalRegisteredMetrics int
 	size, _ := registry.Gather()
