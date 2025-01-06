@@ -13,9 +13,15 @@ type Config struct {
 	Network              string               `mapstructure:"network"`
 	Blockfrost           BlockFrostConfig     `mapstructure:"blockfrost"`
 	PoolWatcherConfig    PoolWatcherConfig    `mapstructure:"pool-watcher"`
+	NetworkWatcherConfig NetworkWatcherConfig `mapstructure:"network-watcher"`
 }
 
 type PoolWatcherConfig struct {
+	Enabled         bool `mapstructure:"enabled"`
+	RefreshInterval int  `mapstructure:"refresh-interval"`
+}
+
+type NetworkWatcherConfig struct {
 	Enabled         bool `mapstructure:"enabled"`
 	RefreshInterval int  `mapstructure:"refresh-interval"`
 }
