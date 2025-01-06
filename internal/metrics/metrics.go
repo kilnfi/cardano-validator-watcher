@@ -27,6 +27,7 @@ type Collection struct {
 	ExpectedBlocks                    *prometheus.GaugeVec
 	LatestSlotProcessedByBlockWatcher prometheus.Gauge
 	NextSlotLeader                    *prometheus.GaugeVec
+	HealthStatus                      prometheus.Gauge
 }
 
 func NewCollection() *Collection {
@@ -189,6 +190,13 @@ func NewCollection() *Collection {
 			},
 			[]string{"pool_name", "pool_id", "pool_instance", "epoch"},
 		),
+		HealthStatus: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Namespace: "cardano_validator_watcher",
+				Name:      "health_status",
+				Help:      "Health status of the Cardano validator watcher: 1 = healthy, 0 = unhealthy",
+			},
+		),
 	}
 }
 
@@ -198,7 +206,6 @@ func (m *Collection) MustRegister(reg prometheus.Registerer) {
 	reg.MustRegister(m.ChainID)
 	reg.MustRegister(m.EpochDuration)
 	reg.MustRegister(m.NetworkEpoch)
-	reg.MustRegister(m.NextEpochStartTime)
 	reg.MustRegister(m.NetworkBlockHeight)
 	reg.MustRegister(m.NetworkSlot)
 	reg.MustRegister(m.NetworkEpochSlot)
@@ -206,6 +213,7 @@ func (m *Collection) MustRegister(reg prometheus.Registerer) {
 	reg.MustRegister(m.NetworkCurrentEpochProposedBlocks)
 	reg.MustRegister(m.NetworkActiveStake)
 	reg.MustRegister(m.RelaysPerPool)
+	reg.MustRegister(m.NextEpochStartTime)
 	reg.MustRegister(m.PoolsPledgeMet)
 	reg.MustRegister(m.PoolsSaturationLevel)
 	reg.MustRegister(m.MonitoredValidatorsCount)
@@ -216,4 +224,5 @@ func (m *Collection) MustRegister(reg prometheus.Registerer) {
 	reg.MustRegister(m.ExpectedBlocks)
 	reg.MustRegister(m.LatestSlotProcessedByBlockWatcher)
 	reg.MustRegister(m.NextSlotLeader)
+	reg.MustRegister(m.HealthStatus)
 }

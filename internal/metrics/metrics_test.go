@@ -33,7 +33,7 @@ func TestMustRegister(t *testing.T) {
 	metrics.MustRegister(registry)
 
 	// The expected number of metrics to be registered, based on the definitions provided in the Collection struct.
-	expectedMetricsCount := 21
+	expectedMetricsCount := 22
 
 	var totalRegisteredMetrics int
 	size, _ := registry.Gather()

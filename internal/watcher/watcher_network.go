@@ -23,10 +23,11 @@ type NetworkWatcherOptions struct {
 
 // NetworkWatcher represents a network watcher
 type NetworkWatcher struct {
-	logger     *slog.Logger
-	blockfrost blockfrost.Client
-	metrics    *metrics.Collection
-	opts       NetworkWatcherOptions
+	logger      *slog.Logger
+	blockfrost  blockfrost.Client
+	metrics     *metrics.Collection
+	healthStore *HealthStore
+	opts        NetworkWatcherOptions
 }
 
 var _ Watcher = (*NetworkWatcher)(nil)
@@ -35,16 +36,18 @@ var _ Watcher = (*NetworkWatcher)(nil)
 func NewNetworkWatcher(
 	blockfrost blockfrost.Client,
 	metrics *metrics.Collection,
+	healthStore *HealthStore,
 	opts NetworkWatcherOptions,
 ) *NetworkWatcher {
 	logger := slog.With(
 		slog.String("component", "network-watcher"),
 	)
 	return &NetworkWatcher{
-		logger:     logger,
-		blockfrost: blockfrost,
-		metrics:    metrics,
-		opts:       opts,
+		logger:      logger,
+		blockfrost:  blockfrost,
+		metrics:     metrics,
+		healthStore: healthStore,
+		opts:        opts,
 	}
 }
 
@@ -54,9 +57,16 @@ func (w *NetworkWatcher) Start(ctx context.Context) error {
 	ticker := time.NewTicker(w.opts.RefreshInterval)
 	defer ticker.Stop()
 
+	var previousHealthStatus bool
 	for {
-		if err := w.start(ctx); err != nil {
-			w.logger.Error("watcher started but failed with the following error", slog.String("error", err.Error()))
+		currentHealthStatus := w.healthStore.GetHealth()
+		w.handleHealthTransition(previousHealthStatus, currentHealthStatus)
+		previousHealthStatus = currentHealthStatus
+
+		if currentHealthStatus {
+			if err := w.start(ctx); err != nil {
+				w.logger.Error("watcher started but failed with the following error", slog.String("error", err.Error()))
+			}
 		}
 
 		select {
@@ -84,6 +94,21 @@ func (w *NetworkWatcher) start(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// handleHealthTransition handles the transition of the network watcher's health status.
+// It compares the previous and current health states, and logs a warning if the network watcher
+// is not ready, or an info message if it is ready.
+func (w *NetworkWatcher) handleHealthTransition(previous bool, current bool) {
+	if previous != current {
+		if !w.healthStore.GetHealth() {
+			w.logger.Warn(
+				"💔 network watcher is not ready.",
+			)
+		} else {
+			w.logger.Info("💚 network watcher is ready")
+		}
+	}
 }
 
 // collectChainInfo collects information about the chain

@@ -22,13 +22,14 @@ type PoolWatcherOptions struct {
 
 // PoolWatcher represents a watcher for a set of Cardano pools.
 type PoolWatcher struct {
-	logger     *slog.Logger
-	blockfrost blockfrost.Client
-	metrics    *metrics.Collection
-	pools      pools.Pools
-	poolstats  pools.PoolStats
-	cache      *ristretto.Cache
-	opts       PoolWatcherOptions
+	logger      *slog.Logger
+	blockfrost  blockfrost.Client
+	metrics     *metrics.Collection
+	pools       pools.Pools
+	poolstats   pools.PoolStats
+	healthStore *HealthStore
+	cache       *ristretto.Cache
+	opts        PoolWatcherOptions
 }
 
 var _ Watcher = (*PoolWatcher)(nil)
@@ -40,6 +41,7 @@ func NewPoolWatcher(
 	blockfrost blockfrost.Client,
 	metrics *metrics.Collection,
 	pools pools.Pools,
+	healthStore *HealthStore,
 	opts PoolWatcherOptions,
 ) (*PoolWatcher, error) {
 	logger := slog.With(
@@ -56,13 +58,14 @@ func NewPoolWatcher(
 	}
 
 	return &PoolWatcher{
-		logger:     logger,
-		blockfrost: blockfrost,
-		metrics:    metrics,
-		pools:      pools,
-		poolstats:  pools.GetPoolStats(),
-		cache:      cache,
-		opts:       opts,
+		logger:      logger,
+		blockfrost:  blockfrost,
+		metrics:     metrics,
+		pools:       pools,
+		poolstats:   pools.GetPoolStats(),
+		healthStore: healthStore,
+		cache:       cache,
+		opts:        opts,
 	}, nil
 }
 
@@ -73,9 +76,16 @@ func (w *PoolWatcher) Start(ctx context.Context) error {
 	ticker := time.NewTicker(w.opts.RefreshInterval)
 	defer ticker.Stop()
 
+	var previousHealthStatus bool
 	for {
-		if err := w.fetch(ctx); err != nil {
-			w.logger.Error("unable to fetch pool data", slog.String("error", err.Error()))
+		currentHealthStatus := w.healthStore.GetHealth()
+		w.handleHealthTransition(previousHealthStatus, currentHealthStatus)
+		previousHealthStatus = currentHealthStatus
+
+		if currentHealthStatus {
+			if err := w.fetch(ctx); err != nil {
+				w.logger.Error("unable to fetch pool data", slog.String("error", err.Error()))
+			}
 		}
 
 		select {
@@ -84,6 +94,21 @@ func (w *PoolWatcher) Start(ctx context.Context) error {
 			return fmt.Errorf("context done in watcher: %w", ctx.Err())
 		case <-ticker.C:
 			continue
+		}
+	}
+}
+
+// handleHealthTransition handles the transition of the pool watcher's health status.
+// It compares the previous and current health states, and logs a warning if the pool watcher
+// is not ready, or an info message if it is ready.
+func (w *PoolWatcher) handleHealthTransition(previous bool, current bool) {
+	if previous != current {
+		if !w.healthStore.GetHealth() {
+			w.logger.Warn(
+				"💔 pool watcher is not ready.",
+			)
+		} else {
+			w.logger.Info("💚 pool watcher is ready")
 		}
 	}
 }

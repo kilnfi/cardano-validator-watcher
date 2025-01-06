@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/kilnfi/cardano-validator-watcher/internal/watcher"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -23,13 +24,15 @@ type Server struct {
 	router *http.ServeMux
 	server *http.Server
 
-	registry *prometheus.Registry
+	healthStore *watcher.HealthStore
+	registry    *prometheus.Registry
 
 	options *options
 }
 
 func New(
 	registry *prometheus.Registry,
+	healthStore *watcher.HealthStore,
 	opts ...ServerOptionsFunc,
 ) (*Server, error) {
 	logger := slog.With(
@@ -61,8 +64,9 @@ func New(
 			ReadTimeout:  options.readTimeout,
 			WriteTimeout: options.writeTimeout,
 		},
-		registry: registry,
-		options:  options,
+		registry:    registry,
+		healthStore: healthStore,
+		options:     options,
 	}
 
 	server.registerRoutes()
@@ -87,7 +91,7 @@ func (s *Server) Stop(ctx context.Context) error {
 }
 
 func (s *Server) registerRoutes() {
-	handler := NewHandler(s.logger)
+	handler := NewHandler(s.logger, s.healthStore)
 
 	s.router.HandleFunc("GET /", handler.Default)
 	s.router.HandleFunc("GET /livez", handler.LiveProbe)

@@ -78,6 +78,8 @@ func TestBlockWatcher_Start(t *testing.T) {
 		options := BlockWatcherOptions{
 			RefreshInterval: time.Minute * 1,
 		}
+		healthStore := NewHealthStore()
+		healthStore.SetHealth(false)
 		watcher := NewBlockWatcher(
 			clients.cardano,
 			clients.bf,
@@ -85,6 +87,7 @@ func TestBlockWatcher_Start(t *testing.T) {
 			pool,
 			registry.metrics,
 			mockDBClient.db,
+			healthStore,
 			options,
 		)
 		err := watcher.Start(ctx)
@@ -166,6 +169,8 @@ func TestBlockWatcher_Start(t *testing.T) {
 		options := BlockWatcherOptions{
 			RefreshInterval: time.Minute * 1,
 		}
+		healthStore := NewHealthStore()
+		healthStore.SetHealth(true)
 		watcher := NewBlockWatcher(
 			clients.cardano,
 			clients.bf,
@@ -173,6 +178,7 @@ func TestBlockWatcher_Start(t *testing.T) {
 			pool,
 			registry.metrics,
 			mockDBClient.db,
+			healthStore,
 			options,
 		)
 		err := watcher.Start(ctx)
@@ -294,6 +300,8 @@ cardano_validator_watcher_validated_blocks_total{epoch="100", pool_id="pool-0", 
 		options := BlockWatcherOptions{
 			RefreshInterval: time.Minute * 1,
 		}
+		healthStore := NewHealthStore()
+		healthStore.SetHealth(true)
 		watcher := NewBlockWatcher(
 			clients.cardano,
 			clients.bf,
@@ -301,6 +309,7 @@ cardano_validator_watcher_validated_blocks_total{epoch="100", pool_id="pool-0", 
 			pool,
 			registry.metrics,
 			mockDBClient.db,
+			healthStore,
 			options,
 		)
 
@@ -417,6 +426,8 @@ cardano_validator_watcher_validated_blocks_total{epoch="100", pool_id="pool-0", 
 		options := BlockWatcherOptions{
 			RefreshInterval: time.Minute * 1,
 		}
+		healthStore := NewHealthStore()
+		healthStore.SetHealth(true)
 		watcher := NewBlockWatcher(
 			clients.cardano,
 			clients.bf,
@@ -424,6 +435,7 @@ cardano_validator_watcher_validated_blocks_total{epoch="100", pool_id="pool-0", 
 			pool,
 			registry.metrics,
 			mockDBClient.db,
+			healthStore,
 			options,
 		)
 		err := watcher.Start(ctx)
@@ -543,6 +555,8 @@ cardano_validator_watcher_orphaned_blocks_total{epoch="100", pool_id="pool-0", p
 		options := BlockWatcherOptions{
 			RefreshInterval: time.Minute * 1,
 		}
+		healthStore := NewHealthStore()
+		healthStore.SetHealth(true)
 		watcher := NewBlockWatcher(
 			clients.cardano,
 			clients.bf,
@@ -550,6 +564,7 @@ cardano_validator_watcher_orphaned_blocks_total{epoch="100", pool_id="pool-0", p
 			pool,
 			registry.metrics,
 			mockDBClient.db,
+			healthStore,
 			options,
 		)
 
@@ -659,6 +674,8 @@ cardano_validator_watcher_consecutive_missed_blocks{epoch="100", pool_id="pool-0
 		options := BlockWatcherOptions{
 			RefreshInterval: time.Minute * 1,
 		}
+		healthStore := NewHealthStore()
+		healthStore.SetHealth(true)
 		watcher := NewBlockWatcher(
 			clients.cardano,
 			clients.bf,
@@ -666,6 +683,7 @@ cardano_validator_watcher_consecutive_missed_blocks{epoch="100", pool_id="pool-0
 			pool,
 			registry.metrics,
 			mockDBClient.db,
+			healthStore,
 			options,
 		)
 		err := watcher.Start(ctx)
@@ -780,6 +798,8 @@ cardano_validator_watcher_validated_blocks_total{epoch="100", pool_id="pool-0", 
 		options := BlockWatcherOptions{
 			RefreshInterval: time.Minute * 1,
 		}
+		healthStore := NewHealthStore()
+		healthStore.SetHealth(true)
 		watcher := NewBlockWatcher(
 			clients.cardano,
 			clients.bf,
@@ -787,6 +807,7 @@ cardano_validator_watcher_validated_blocks_total{epoch="100", pool_id="pool-0", 
 			pool,
 			registry.metrics,
 			mockDBClient.db,
+			healthStore,
 			options,
 		)
 		err := watcher.Start(ctx)
@@ -977,6 +998,8 @@ cardano_validator_watcher_validated_blocks_total{epoch="101",pool_id="pool-0",po
 		options := BlockWatcherOptions{
 			RefreshInterval: time.Second * 15,
 		}
+		healthStore := NewHealthStore()
+		healthStore.SetHealth(true)
 		watcher := NewBlockWatcher(
 			clients.cardano,
 			clients.bf,
@@ -984,6 +1007,7 @@ cardano_validator_watcher_validated_blocks_total{epoch="101",pool_id="pool-0",po
 			pool,
 			registry.metrics,
 			mockDBClient.db,
+			healthStore,
 			options,
 		)
 		err := watcher.Start(ctx)
@@ -1030,6 +1054,7 @@ cardano_validator_watcher_validated_blocks_total{epoch="101",pool_id="pool-0",po
 		options := BlockWatcherOptions{
 			RefreshInterval: time.Minute * 1,
 		}
+		healthStore := NewHealthStore()
 		watcher := NewBlockWatcher(
 			clients.cardano,
 			clients.bf,
@@ -1037,6 +1062,7 @@ cardano_validator_watcher_validated_blocks_total{epoch="101",pool_id="pool-0",po
 			pool,
 			registry.metrics,
 			mockDBClient.db,
+			healthStore,
 			options,
 		)
 		err := watcher.Start(ctx)
@@ -1115,6 +1141,8 @@ cardano_validator_watcher_validated_blocks_total{epoch="101",pool_id="pool-0",po
 		options := BlockWatcherOptions{
 			RefreshInterval: time.Minute * 1,
 		}
+		healthStore := NewHealthStore()
+		healthStore.SetHealth(true)
 		watcher := NewBlockWatcher(
 			clients.cardano,
 			clients.bf,
@@ -1122,6 +1150,7 @@ cardano_validator_watcher_validated_blocks_total{epoch="101",pool_id="pool-0",po
 			pool,
 			registry.metrics,
 			mockDBClient.db,
+			healthStore,
 			options,
 		)
 		err := watcher.Start(ctx)
@@ -1163,6 +1192,8 @@ cardano_validator_watcher_validated_blocks_total{epoch="101",pool_id="pool-0",po
 		options := BlockWatcherOptions{
 			RefreshInterval: time.Minute * 1,
 		}
+		healthStore := NewHealthStore()
+		healthStore.SetHealth(false)
 		watcher := NewBlockWatcher(
 			clients.cardano,
 			clients.bf,
@@ -1170,6 +1201,7 @@ cardano_validator_watcher_validated_blocks_total{epoch="101",pool_id="pool-0",po
 			pool,
 			registry.metrics,
 			mockDBClient.db,
+			healthStore,
 			options,
 		)
 		err := watcher.Start(ctx)

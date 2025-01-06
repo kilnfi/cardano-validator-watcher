@@ -103,10 +103,13 @@ func TestPoolWatcher_Start(t *testing.T) {
 		)
 
 		options := PoolWatcherOptions{RefreshInterval: 10 * time.Second, Network: "preprod"}
+		healthStore := NewHealthStore()
+		healthStore.SetHealth(true)
 		watcher, err := NewPoolWatcher(
 			bf,
 			metrics,
 			pools,
+			healthStore,
 			options,
 		)
 		require.NoError(t, err)
@@ -115,5 +118,40 @@ func TestPoolWatcher_Start(t *testing.T) {
 		b := bytes.NewBufferString(metricsExpectedOutput)
 		err = testutil.CollectAndCompare(registry, b, metricsUnderTest...)
 		require.NoError(t, err)
+	})
+
+	t.Run("SadPath_WatcherIsNotReady", func(t *testing.T) {
+		t.Parallel()
+
+		pools := setupPools(t)
+
+		registry := prometheus.NewRegistry()
+		metrics := metrics.NewCollection()
+		metrics.MustRegister(registry)
+
+		bf := bfMocks.NewMockClient(t)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		go func() {
+			ticker := time.NewTicker(10 * time.Second)
+			defer ticker.Stop()
+			<-ticker.C
+			cancel()
+		}()
+
+		options := PoolWatcherOptions{RefreshInterval: 30 * time.Second, Network: "preprod"}
+		healthStore := NewHealthStore()
+		healthStore.SetHealth(false)
+		watcher, err := NewPoolWatcher(
+			bf,
+			metrics,
+			pools,
+			healthStore,
+			options,
+		)
+		require.NoError(t, err)
+		err = watcher.Start(ctx)
+		require.ErrorIs(t, err, context.Canceled)
 	})
 }

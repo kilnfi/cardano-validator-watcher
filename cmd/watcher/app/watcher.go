@@ -90,6 +90,7 @@ func NewWatcherCommand() *cobra.Command {
 	cmd.Flags().StringP("blockfrost-endpoint", "", "", "blockfrost API endpoint")
 	cmd.Flags().IntP("blockfrost-max-routines", "", 10, "number of routines used by blockfrost to perform concurrent actions")
 	cmd.Flags().IntP("blockfrost-timeout", "", 60, "Timeout for requests to the Blockfrost API (in seconds)")
+	cmd.Flags().IntP("status-watcher-refresh-interval", "", 15, "Interval at which the status watcher collects data about the network (in seconds)")
 	cmd.Flags().BoolP("network-watcher-enabled", "", true, "Enable network watcher")
 	cmd.Flags().IntP("network-watcher-refresh-interval", "", 60, "Interval at which the network watcher collects data about the network (in seconds)")
 	cmd.Flags().BoolP("pool-watcher-enabled", "", true, "Enable pool watcher")
@@ -112,10 +113,12 @@ func NewWatcherCommand() *cobra.Command {
 	checkError(viper.BindPFlag("blockfrost.timeout", cmd.Flag("blockfrost-timeout")), "unable to bind blockfrost-timeout flag")
 	checkError(viper.BindPFlag("network-watcher.enabled", cmd.Flag("network-watcher-enabled")), "unable to bind network-watcher-enabled flag")
 	checkError(viper.BindPFlag("network-watcher.refresh-interval", cmd.Flag("network-watcher-refresh-interval")), "unable to bind network-watcher-refresh-interval flag")
+	checkError(viper.BindPFlag("status-watcher.refresh-interval", cmd.Flag("status-watcher-refresh-interval")), "unable to bind status-watcher-refresh-interval flag")
 	checkError(viper.BindPFlag("pool-watcher.enabled", cmd.Flag("pool-watcher-enabled")), "unable to bind pool-watcher-enabled flag")
 	checkError(viper.BindPFlag("pool-watcher.refresh-interval", cmd.Flag("pool-watcher-refresh-interval")), "unable to bind pool-watcher-refresh-interval flag")
 	checkError(viper.BindPFlag("block-watcher.enabled", cmd.Flag("block-watcher-enabled")), "unable to bind block-watcher-enabled flag")
 	checkError(viper.BindPFlag("block-watcher.refresh-interval", cmd.Flag("block-watcher-refresh-interval")), "unable to bind block-watcher-refresh-interval flag")
+
 	return cmd
 }
 
@@ -197,24 +200,29 @@ func run(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("unable to refresh slot leaders: %w", err)
 	}
 
+	healthStore := watcher.NewHealthStore()
+
 	// Start HTTP server
-	if err := startHTTPServer(eg, registry); err != nil {
+	if err := startHTTPServer(eg, registry, healthStore); err != nil {
 		return fmt.Errorf("unable to start http server: %w", err)
 	}
 
+	// Start Status Watcher
+	startStatusWatcher(ctx, eg, cardano, blockfrost, metrics, healthStore)
+
 	// Start Pool Watcher
 	if cfg.PoolWatcherConfig.Enabled {
-		startPoolWatcher(ctx, eg, blockfrost, metrics, cfg.Pools)
+		startPoolWatcher(ctx, eg, blockfrost, metrics, cfg.Pools, healthStore)
 	}
 
 	// Start Block Watcher
 	if cfg.BlockWatcherConfig.Enabled {
-		startBlockWatcher(ctx, eg, cardano, blockfrost, slotLeaderService, metrics, cfg.Pools, database.DB)
+		startBlockWatcher(ctx, eg, cardano, blockfrost, slotLeaderService, metrics, cfg.Pools, database.DB, healthStore)
 	}
 
 	// Start Network Watcher
 	if cfg.NetworkWatcherConfig.Enabled {
-		startNetworkWatcher(ctx, eg, blockfrost, metrics)
+		startNetworkWatcher(ctx, eg, blockfrost, metrics, healthStore)
 	}
 
 	<-ctx.Done()
@@ -259,11 +267,12 @@ func createCardanoClient(blockfrost blockfrost.Client) cardano.CardanoClient {
 	return cardanocli.NewClient(opts, blockfrost, &cardanocli.RealCommandExecutor{})
 }
 
-func startHTTPServer(eg *errgroup.Group, registry *prometheus.Registry) error {
+func startHTTPServer(eg *errgroup.Group, registry *prometheus.Registry, healthStore *watcher.HealthStore) error {
 	var err error
 
 	server, err = http.New(
 		registry,
+		healthStore,
 		http.WithHost(cfg.HTTP.Host),
 		http.WithPort(cfg.HTTP.Port),
 	)
@@ -286,6 +295,28 @@ func startHTTPServer(eg *errgroup.Group, registry *prometheus.Registry) error {
 	return nil
 }
 
+// startStatusWatcher starts the status watcher service
+func startStatusWatcher(
+	ctx context.Context,
+	eg *errgroup.Group,
+	cardano cardano.CardanoClient,
+	blockfrost blockfrost.Client,
+	metrics *metrics.Collection,
+	healthStore *watcher.HealthStore,
+) {
+	eg.Go(func() error {
+		statusWatcher := watcher.NewStatusWatcher(blockfrost, cardano, metrics, healthStore)
+		logger.Info(
+			"starting watcher",
+			slog.String("component", "status-watcher"),
+		)
+		if err := statusWatcher.Start(ctx); err != nil {
+			return fmt.Errorf("unable to start status watcher: %w", err)
+		}
+		return nil
+	})
+}
+
 // startPoolWatcher starts the pool watcher service
 func startPoolWatcher(
 	ctx context.Context,
@@ -293,6 +324,7 @@ func startPoolWatcher(
 	blockfrost blockfrost.Client,
 	metrics *metrics.Collection,
 	pools pools.Pools,
+	healthStore *watcher.HealthStore,
 ) {
 	eg.Go(func() error {
 		options := watcher.PoolWatcherOptions{
@@ -303,7 +335,7 @@ func startPoolWatcher(
 			"starting watcher",
 			slog.String("component", "pool-watcher"),
 		)
-		poolWatcher, err := watcher.NewPoolWatcher(blockfrost, metrics, pools, options)
+		poolWatcher, err := watcher.NewPoolWatcher(blockfrost, metrics, pools, healthStore, options)
 		if err != nil {
 			return fmt.Errorf("unable to create pool watcher: %w", err)
 		}
@@ -314,12 +346,12 @@ func startPoolWatcher(
 	})
 }
 
-// startNetworkWatcher starts the network watcher service
 func startNetworkWatcher(
 	ctx context.Context,
 	eg *errgroup.Group,
 	blockfrost blockfrost.Client,
 	metrics *metrics.Collection,
+	healthStore *watcher.HealthStore,
 ) {
 	eg.Go(func() error {
 		options := watcher.NetworkWatcherOptions{
@@ -331,7 +363,7 @@ func startNetworkWatcher(
 			"starting watcher",
 			slog.String("component", "network-watcher"),
 		)
-		networkWatcher := watcher.NewNetworkWatcher(blockfrost, metrics, options)
+		networkWatcher := watcher.NewNetworkWatcher(blockfrost, metrics, healthStore, options)
 		if err := networkWatcher.Start(ctx); err != nil {
 			return fmt.Errorf("unable to start network watcher: %w", err)
 		}
@@ -349,12 +381,13 @@ func startBlockWatcher(
 	metrics *metrics.Collection,
 	pools pools.Pools,
 	db *sqlx.DB,
+	healthStore *watcher.HealthStore,
 ) {
 	eg.Go(func() error {
 		options := watcher.BlockWatcherOptions{
 			RefreshInterval: time.Second * time.Duration(cfg.BlockWatcherConfig.RefreshInterval),
 		}
-		blockWatcher := watcher.NewBlockWatcher(cardano, blockfrost, sl, pools, metrics, db, options)
+		blockWatcher := watcher.NewBlockWatcher(cardano, blockfrost, sl, pools, metrics, db, healthStore, options)
 		logger.Info(
 			"starting watcher",
 			slog.String("component", "block-watcher"),

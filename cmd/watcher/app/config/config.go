@@ -17,6 +17,7 @@ type Config struct {
 	BlockWatcherConfig   BlockWatcherConfig   `mapstructure:"block-watcher"`
 	PoolWatcherConfig    PoolWatcherConfig    `mapstructure:"pool-watcher"`
 	NetworkWatcherConfig NetworkWatcherConfig `mapstructure:"network-watcher"`
+	StatusWatcherConfig  StatusWatcherConfig  `mapstructure:"status-watcher"`
 }
 
 type BlockWatcherConfig struct {
@@ -32,6 +33,10 @@ type PoolWatcherConfig struct {
 type NetworkWatcherConfig struct {
 	Enabled         bool `mapstructure:"enabled"`
 	RefreshInterval int  `mapstructure:"refresh-interval"`
+}
+
+type StatusWatcherConfig struct {
+	RefreshInterval int `mapstructure:"refresh-interval"`
 }
 
 type HTTPConfig struct {
