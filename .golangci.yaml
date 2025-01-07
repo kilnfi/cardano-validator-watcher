@@ -1,0 +1,61 @@
+linters:
+  disable-all: true
+  enable:
+    - asasalint
+    - asciicheck
+    - bidichk
+    - bodyclose
+    - dogsled
+    - durationcheck
+    - dupword
+    - errcheck
+    - copyloopvar
+    - errchkjson
+    - goconst
+    - gofmt
+    - sloglint
+    - goheader
+    - goimports
+    - goprintffuncname
+    - gosec
+    - gosimple
+    - gocritic
+    - govet
+    - ginkgolinter
+    - importas
+    - ineffassign
+    - misspell
+    - nakedret
+    - nosprintfhostport
+    - nilerr
+    - noctx
+    - nolintlint
+    - revive
+    - staticcheck
+    - stylecheck
+    - testifylint
+    - tparallel
+    - thelper
+    - typecheck
+    - unconvert
+    - unparam
+    - unused
+    - usestdlibvars
+    - whitespace
+    - wrapcheck
+    - tagliatelle
+    - sqlclosecheck
+    - promlinter
+    - prealloc
+    - contextcheck
+
+linters-settings:
+  gocritic:
+    disabled-checks: [captLocal]
+  revive:
+    rules:
+      - name: blank-imports
+        disabled: true
+issues: {}
+run:
+  timeout: 5m
