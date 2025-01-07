@@ -1,0 +1,65 @@
+version: 2
+project_name: cardano-validator-watcher
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: cardano-validator-watcher
+    main: cmd/watcher/main.go
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+
+archives:
+  - format: tar.gz
+    name_template: '{{ .Binary }}-{{ .Tag }}-{{ .Os }}-{{ .Arch }}'
+    files:
+      - none*
+
+dockers:
+- image_templates:
+    - 'ghcr.io/kilnfi/cardano-validator-watcher:{{ .Tag }}-amd64'
+  dockerfile: Dockerfile
+  use: buildx
+  goos: linux
+  goarch: amd64
+  build_flag_templates:
+   - "--pull"
+   - "--build-arg=ARCH=linux/amd64"
+   - "--platform=linux/amd64"
+   - "--label=org.opencontainers.image.created={{ .Date }}"
+   - "--label=org.opencontainers.image.name={{ .ProjectName }}"
+   - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+   - "--label=org.opencontainers.image.version={{ .Version }}"
+   - "--label=org.opencontainers.image.source={{ .GitURL }}"
+   - "--label=org.opencontainers.image.authors=contact@kiln.fi"
+- image_templates:
+    - 'ghcr.io/kilnfi/cardano-validator-watcher:{{ .Tag }}-arm64'
+  dockerfile: Dockerfile
+  use: buildx
+  goos: linux
+  goarch: arm64
+  build_flag_templates:
+   - "--pull"
+   - "--build-arg=ARCH=linux/arm64"
+   - "--platform=linux/arm64"
+   - "--label=org.opencontainers.image.created={{ .Date }}"
+   - "--label=org.opencontainers.image.name={{ .ProjectName }}"
+   - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+   - "--label=org.opencontainers.image.version={{ .Version }}"
+   - "--label=org.opencontainers.image.source={{ .GitURL }}"
+   - "--label=org.opencontainers.image.authors=contact@kiln.fi"
+docker_manifests:
+- name_template: 'ghcr.io/kilnfi/cardano-validator-watcher:{{ .Tag }}'
+  image_templates:
+    - 'ghcr.io/kilnfi/cardano-validator-watcher:{{ .Tag }}-amd64'
+    - 'ghcr.io/kilnfi/cardano-validator-watcher:{{ .Tag }}-arm64'
+- name_template: 'ghcr.io/kilnfi/cardano-validator-watcher:latest'
+  image_templates:
+    - 'ghcr.io/kilnfi/cardano-validator-watcher:{{ .Tag }}-amd64'
+    - 'ghcr.io/kilnfi/cardano-validator-watcher:{{ .Tag }}-arm64'
+changelog:
+  disable: true
