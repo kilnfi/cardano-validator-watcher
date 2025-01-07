@@ -11,6 +11,8 @@ This project use the following dependencies:
 - [BlockFrost](https://blockfrost.dev/). You need to have a account and a subscription.
 - [cncli](https://github.com/cardano-community/cncli) to calculate the slot leaders.
 - [cardano-cli](https://github.com/IntersectMBO/cardano-cli) to query additional data from a RPC node.
+- A valid RPC node
+- You need to download the Genesis configuration files and provide the VRF signing key for each monitored pool.
 
 ## Usage
 
