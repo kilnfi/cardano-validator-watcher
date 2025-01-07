@@ -2,7 +2,7 @@ module github.com/kilnfi/cardano-validator-watcher
 
 go 1.22.5
 
-replace github.com/mitchellh/mapstructure => github.com/go-viper/mapstructure v1.6.0
+replace github.com/mitchellh/mapstructure => github.com/go-viper/mapstructure/v2 v2.2.1
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
