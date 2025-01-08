@@ -29,3 +29,5 @@ testbin/
 # Others
 **/.DS_Store
 *.db*
+
+.codegpt
