@@ -6,7 +6,7 @@ replace github.com/mitchellh/mapstructure => github.com/go-viper/mapstructure v1
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
-	github.com/blockfrost/blockfrost-go v0.2.2
+	github.com/blockfrost/blockfrost-go v0.3.0
 	github.com/dgraph-io/ristretto v0.2.0
 	github.com/dgraph-io/ristretto/v2 v2.0.1
 	github.com/jmoiron/sqlx v1.4.0
