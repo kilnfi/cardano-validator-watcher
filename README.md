@@ -11,14 +11,34 @@ This project use the following dependencies:
 - [BlockFrost](https://blockfrost.dev/). You need to have a account and a subscription.
 - [cncli](https://github.com/cardano-community/cncli) to calculate the slot leaders.
 - [cardano-cli](https://github.com/IntersectMBO/cardano-cli) to query additional data from a RPC node.
-- A valid RPC node
-- You need to download the Genesis configuration files and provide the VRF signing key for each monitored pool.
+- A valid RPC node.
+- Download the [Genesis configuration files](https://book.world.dev.cardano.org/environments.html) and provide the VRF signing key for each monitored pool.
 
 ## Usage
+
+To start the watcher, you need to open a socket connection with your Cardano node. This can be done using the following commands:
+
+### With Kubernetes
+```bash
+kubectl port-forward pod/<POD_NAME> 3002 &
+socat UNIX-LISTEN:/tmp/cardano.socket,fork,reuseaddr,unlink-early, TCP:127.0.0.1:3002
+```
+
+### Without Kubernetes
+```bash
+socat UNIX-LISTEN:/tmp/cardano.socket,fork,reuseaddr,unlink-early, TCP:<IP>:<PORT>
+```
+
+Ensure that you have downloaded the [Genesis configuration files](https://book.world.dev.cardano.org/environments.html). You also need to provide the VRF signing key for each monitored pool.
+
+Then, to start the watcher, execute the following command:
 
 ```bash
 ./cardano-validator-watcher [flags]
 ```
+
+If you don't specify a config path, by default, the watcher searches for a `config.yaml` file in the current directory.
+
 ### Flags
 
 | Flag                                  | Description                                                                           | Default Value             | Required |
@@ -49,17 +69,16 @@ This project use the following dependencies:
 The watcher uses a `config.yaml` file in the current working directory by default. Use the `--config` flag to specify a different configuration file.
 
 ### Full Example
-
 ```yaml
 pools:
-  - instance: "cardano-producer-xxxx-0"
-    id: "poolxxxxxxxxxxxx"
-    name: "xxxx-0"
-    key: "config/xxxx.vrf.skey"
-  - instance: "cardano-producer-xxxx-1"
-    id: "poolxxxxxxxxxxxx"
-    name: "xxxx-1"
-    key: "config/xxxxx-1.vrf.skey"
+  - instance: "cardano-producer-pool-0"
+    id: "pool1abcd1234efgh5678ijklmnopqrstuvwx"
+    name: "pool-0"
+    key: "config/pool-0.vrf.skey"
+  - instance: "cardano-producer-pool-1"
+    id: "pool2abcd1234efgh5678ijklmnopqrstuvwx"
+    name: "pool-1"
+    key: "config/pool-1.vrf.skey"
     exclude: true
     allow-empty-slots: true
 network: "mainnet"
@@ -95,26 +114,13 @@ cardano:
 
 | Field                     | Description                                               | Example                                                             |
 |---------------------------|-----------------------------------------------------------|---------------------------------------------------------------------|
-| `instance`                | Name of the instance                                      | `"mainnet-cardano-producer-kiln-0"`                                 |
-| `id`                      | Pool ID                                                   | `"pool10rdglgh4pzvkf936p2m669qzarr9dusrhmmz9nultm3uvq4eh5k"`        |
-| `name`                    | Name of the pool                                          | `"kiln-0"`                                                          |
-| `key`                     | Path to the key file                                      | `"config/kiln-0.vrf.skey"`                                          |
+| `instance`                | Name of the instance                                      | `"cardano-producer-pool-0"`                                 |
+| `id`                      | Pool ID                                                   | `"pool1abcd1234efgh5678ijklmnopqrstuvwx"`        |
+| `name`                    | Name of the pool                                          | `"pool-0"`                                                          |
+| `key`                     | Path to the key file                                      | `"config/pool-0.vrf.skey"`                                          |
 | `exclude`                 | Exclude the pool from monitoring                          | `true`                                                              |
-| `allow-empty-slots`       | Pools is allowed to not have slot leaders                 | `"config/kiln-0.vrf.skey"`                                          |
+| `allow-empty-slots`       | Pools is allowed to not have slot leaders                 | `false`                                          |
 
-```yaml
-pools:
-  - instance: "cardano-producer-xxxx-0"
-    id: "poolxxxxxxxxxxxx"
-    name: "xxxx-0"
-    key: "config/xxxx.vrf.skey"
-  - instance: "cardano-producer-xxxx-1"
-    id: "poolxxxxxxxxxxxx"
-    name: "xxxx-1"
-    key: "config/xxxxx-1.vrf.skey"
-    exclude: true
-    allow-empty-slots: true
-```
 
 ### Global Settings
 
