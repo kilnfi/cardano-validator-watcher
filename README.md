@@ -37,8 +37,6 @@ Then, to start the watcher, execute the following command:
 ./cardano-validator-watcher [flags]
 ```
 
-If you don't specify a config path, by default, the watcher searches for a `config.yaml` file in the current directory.
-
 ### Flags
 
 | Flag                                  | Description                                                                           | Default Value             | Required |
