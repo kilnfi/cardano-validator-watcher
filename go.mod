@@ -1,6 +1,6 @@
 module github.com/kilnfi/cardano-validator-watcher
 
-go 1.22.5
+go 1.23
 
 replace github.com/mitchellh/mapstructure => github.com/go-viper/mapstructure v1.6.0
 
