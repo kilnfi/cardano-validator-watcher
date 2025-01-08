@@ -10,47 +10,123 @@ permissions:
   packages: write
 
 env:
+  IMAGE_NAME: cardano-validator-watcher
+  BINARY_NAME: cardano-validator-watcher
   CHART_NAME: cardano-validator-watcher
   CHART_DIRECTORY: charts
   REGISTRY: oci://ghcr.io/kilnfi/charts
 
 jobs:
   binaries:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+        arch:
+          - amd64
+          - arm64
+    runs-on: ${{ matrix.os }}
+    env:
+      ARCH_NAME: ${{ matrix.arch }}
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          fetch-tags: true
+
+      - name: Export Variables
+        id: export-variables
+        run: |
+          if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+            echo "os_name=linux" >> $GITHUB_OUTPUT
+          elif [ "${{ matrix.os }}" = "macos-latest" ]; then
+            echo "os_name=darwin" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install dependencies
+        run: |
+          if [ "$OS_NAME" == "linux" ]; then
+            sudo apt-get update
+            if [ "${{ matrix.arch }}" == "amd64" ]; then
+              sudo apt-get install -y build-essential
+            elif [ "${{ matrix.arch }}" == "arm64" ]; then
+              sudo apt install -y build-essential gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+            fi
+          elif [ "$OS_NAME" == "darwin" ]; then
+            brew update
+            brew install sqlite
+          fi
+        env:
+          OS_NAME: ${{ steps.export-variables.outputs.os_name }}
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: 1.23
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          distribution: goreleaser
-          version: '~> v2'
-          args: release --clean
+
+      - name: Build ${{matrix.os}}-${{matrix.arch}} binary
+        id: build
+        run: |
+          OUTPUT_NAME="${{ env.BINARY_NAME }}_${{ github.ref_name }}_${OS_NAME}_${ARCH_NAME}"
+          OUTPUT_DIR=dist/${OUTPUT_NAME}
+          ARCHIVE_NAME="${OUTPUT_NAME}.tar.gz"
+
+          # debug
+          echo "OUTPUT_NAME=${OUTPUT_NAME}"
+          echo "DIR=${OUTPUT_DIR}"
+          echo "ARCH=${ARCH_NAME}"
+          echo "ARCH2=${{ env.ARCH_NAME}}"
+
+          echo "output_dir=${OUTPUT_DIR}" >> $GITHUB_OUTPUT
+          mkdir -p ${OUTPUT_DIR}
+
+          if [ "${OS_NAME}" = "linux" ] && [ "${ARCH_NAME}" = "arm64" ]; then
+            export CC=aarch64-linux-gnu-gcc
+            export CXX=aarch64-linux-gnu-g++
+          fi
+
+          CGO_ENABLED=1 GOOS=$OS_NAME GOARCH=$ARCH_NAME \
+          go build -ldflags="-s -w" -o ${OUTPUT_DIR}/${{ env.BINARY_NAME }} cmd/watcher/main.go
+          tar -czvf ${OUTPUT_DIR}/${ARCHIVE_NAME} -C ${OUTPUT_DIR} ${{ env.BINARY_NAME }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OS_NAME: ${{ steps.export-variables.outputs.os_name }}
+
+      - name: Upload binaries to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: "${{ env.DIRECTORY }}/*.tar.gz"
+          tag: ${{ github.ref_name }}
+          file_glob: true
+        env:
+          DIRECTORY: ${{ steps.build.outputs.output_dir }}
 
   images:
-    runs-on: ubuntu-latest
+    needs: binaries
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+        arch:
+          - amd64
+          - arm64
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
+
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
       - uses: docker/build-push-action@v6
         name: Build & Push Container Images
         with:
@@ -59,26 +135,32 @@ jobs:
           labels: |-
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.name=cardano-validator-watcher"
-            org.opencontainers.image.version=${{ github.ref_name }}"
-            org.opencontainers.image.authors=contact@kiln.fi"
-          platforms: linux/amd64,linux/arm64
+            org.opencontainers.image.name=${{ env.IMAGE_NAME }}
+            org.opencontainers.image.version=${{ github.ref_name }}
+            org.opencontainers.image.authors=contact@kiln.fi
+          platforms: linux/${{matrix.arch}}
           push: true
+          provenance: false
+          sbom: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           tags: |-
-            ghcr.io/${{ github.repository_owner }}/cardano-validator-watcher:${{ github.ref_name }}
-            ghcr.io/${{ github.repository_owner }}/cardano-validator-watcher:latest
+            ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:latest
 
   helm-chart:
     if: false
-    needs: images
     runs-on: ubuntu-latest
+    needs: images
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Set up Helm
         uses: azure/setup-helm@v4.2.0
         with:
           version: v3.16.4
+
       - name: Verify Chart Version
         run: |
           TAG=$(echo ${{ github.ref_name }} | sed 's/v//')
@@ -88,15 +170,18 @@ jobs:
             exit 1
           fi
           echo "CHART_VERSION=$CHART_VERSION" >> $GITHUB_ENV
+
       - name: Helm Registry Login
         run: |
           echo ${{ secrets.GITHUB_TOKEN }} | helm registry login ghcr.io --username ${{ env.USERNAME }} --password-stdin
         env:
           USERNAME: kilnfi
+
       - name: 'Helm Package'
         id: helm-package
         run: |
           helm package ${{ env.CHART_DIRECTORY }}/${{ env.CHART_NAME }} --version $CHART_VERSION
+
       - name: 'Helm Push'
         run: |
           helm push ./cardano-validator-watcher-$CHART_VERSION.tgz ${{ env.REGISTRY }}
