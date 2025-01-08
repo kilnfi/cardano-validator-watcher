@@ -4,13 +4,54 @@ before:
   hooks:
     - go mod tidy
 builds:
-  - id: cardano-validator-watcher
+  - id: cardano-validator-watcher-darwin-amd64
+    binary: cardano-validator-watcher
     main: cmd/watcher/main.go
+    goarch:
+      - amd64
+    goos:
+      - darwin
     env:
-      - CGO_ENABLED=0
+      - CC=o64-clang
+      - CXX=o64-clang++
+    ldflags:
+      - "-s -w"
+  - id: cardano-validator-watcher-darwin-arm64
+    binary: cardano-validator-watcher
+    main: cmd/watcher/main.go
+    goarch:
+      - arm64
+    goos:
+      - darwin
+    env:
+      - CC=oa64-clang
+      - CXX=oa64-clang++
+    ldflags:
+      - "-s -w"
+  - id: cardano-validator-watcher-linux-amd64
+    binary: cardano-validator-watcher
+    main: cmd/watcher/main.go
+    goarch:
+      - amd64
     goos:
       - linux
-      - darwin
+    env:
+      - CC=x86_64-linux-gnu-gcc
+      - CXX=x86_64-linux-gnu-g++
+    ldflags:
+      - "-s -w"
+  - id: cardano-validator-watcher-linux-arm64
+    binary: cardano-validator-watcher
+    main: cmd/watcher/main.go
+    goarch:
+      - arm64
+    goos:
+      - linux
+    env:
+      - CC=aarch64-linux-gnu-gcc
+      - CXX=aarch64-linux-gnu-g++
+    ldflags:
+      - "-s -w"
 archives:
   - format: tar.gz
     name_template: '{{ .Binary }}-{{ .Tag }}-{{ .Os }}-{{ .Arch }}'
