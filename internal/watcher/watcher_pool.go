@@ -8,7 +8,7 @@ import (
 	"time"
 
 	bfAPI "github.com/blockfrost/blockfrost-go"
-	"github.com/dgraph-io/ristretto"
+	"github.com/dgraph-io/ristretto/v2"
 	"github.com/kilnfi/cardano-validator-watcher/internal/blockfrost"
 	"github.com/kilnfi/cardano-validator-watcher/internal/metrics"
 	"github.com/kilnfi/cardano-validator-watcher/internal/pools"
@@ -28,7 +28,7 @@ type PoolWatcher struct {
 	pools       pools.Pools
 	poolstats   pools.PoolStats
 	healthStore *HealthStore
-	cache       *ristretto.Cache
+	cache       *ristretto.Cache[string, interface{}]
 	opts        PoolWatcherOptions
 }
 
@@ -48,7 +48,7 @@ func NewPoolWatcher(
 		slog.String("component", "pool-watcher"),
 	)
 
-	cache, err := ristretto.NewCache(&ristretto.Config{
+	cache, err := ristretto.NewCache(&ristretto.Config[string, interface{}]{
 		NumCounters: 1e7,
 		MaxCost:     1 << 30,
 		BufferItems: 64,
