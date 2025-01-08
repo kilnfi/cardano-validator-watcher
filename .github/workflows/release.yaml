@@ -18,7 +18,7 @@ jobs:
   binaries:
     runs-on: ubuntu-latest
     container:
-      image: docker.io/goreleaser/goreleaser-cross:v1.23
+      image: docker.io/goreleaser/goreleaser-cross:v1.24
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
