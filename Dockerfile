@@ -36,4 +36,4 @@ RUN apk --no-cache add ca-certificates curl sqlite \
 COPY --from=builder /usr/local/bin/cardano-validator-watcher .
 COPY --from=builder /workspace/bin /usr/local/bin
 
-ENTRYPOINT ["/home/cardano/cardano-validator-watcher"]
+ENTRYPOINT ["./cardano-validator-watcher"]
