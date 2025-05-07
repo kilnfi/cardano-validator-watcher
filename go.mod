@@ -1,6 +1,8 @@
 module github.com/kilnfi/cardano-validator-watcher
 
-go 1.23
+go 1.23.0
+
+toolchain go1.24.3
 
 replace github.com/mitchellh/mapstructure => github.com/go-viper/mapstructure v1.6.0
 
@@ -15,7 +17,7 @@ require (
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/viper v1.19.0
 	github.com/stretchr/testify v1.10.0
-	golang.org/x/sync v0.10.0
+	golang.org/x/sync v0.14.0
 )
 
 require (
