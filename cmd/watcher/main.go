@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"os"
 
@@ -14,7 +15,7 @@ func main() {
 
 	command := app.NewWatcherCommand()
 	if err := command.Execute(); err != nil {
-		logger.Error("command execution failed", slog.String("error", err.Error()))
+		logger.ErrorContext(context.Background(), "command execution failed", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
 }

@@ -38,7 +38,7 @@ func (db *database) Connect(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
-	db.DB.SetMaxOpenConns(db.opts.MaxOpenConns)
+	db.SetMaxOpenConns(db.opts.MaxOpenConns)
 
 	return nil
 }

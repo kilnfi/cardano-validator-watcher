@@ -60,18 +60,18 @@ func (w *NetworkWatcher) Start(ctx context.Context) error {
 	var previousHealthStatus bool
 	for {
 		currentHealthStatus := w.healthStore.GetHealth()
-		w.handleHealthTransition(previousHealthStatus, currentHealthStatus)
+		w.handleHealthTransition(ctx, previousHealthStatus, currentHealthStatus)
 		previousHealthStatus = currentHealthStatus
 
 		if currentHealthStatus {
 			if err := w.start(ctx); err != nil {
-				w.logger.Error("watcher started but failed with the following error", slog.String("error", err.Error()))
+				w.logger.ErrorContext(ctx, "watcher started but failed with the following error", slog.String("error", err.Error()))
 			}
 		}
 
 		select {
 		case <-ctx.Done():
-			w.logger.Info("stopping watcher")
+			w.logger.InfoContext(ctx, "stopping watcher")
 			return fmt.Errorf("context done in watcher: %w", ctx.Err())
 		case <-ticker.C:
 			continue
@@ -99,14 +99,14 @@ func (w *NetworkWatcher) start(ctx context.Context) error {
 // handleHealthTransition handles the transition of the network watcher's health status.
 // It compares the previous and current health states, and logs a warning if the network watcher
 // is not ready, or an info message if it is ready.
-func (w *NetworkWatcher) handleHealthTransition(previous bool, current bool) {
+func (w *NetworkWatcher) handleHealthTransition(ctx context.Context, previous bool, current bool) {
 	if previous != current {
 		if !w.healthStore.GetHealth() {
-			w.logger.Warn(
+			w.logger.WarnContext(ctx,
 				"💔 network watcher is not ready.",
 			)
 		} else {
-			w.logger.Info("💚 network watcher is ready")
+			w.logger.InfoContext(ctx, "💚 network watcher is ready")
 		}
 	}
 }

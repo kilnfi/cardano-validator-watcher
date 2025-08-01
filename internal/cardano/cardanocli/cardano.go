@@ -67,7 +67,7 @@ func (c *Client) Ping(ctx context.Context) error {
 	}
 
 	cmd := fmt.Sprintf("cardano-cli %s", strings.Join(args, " "))
-	c.logger.Debug("pinging cardano node", slog.String("cmd", cmd))
+	c.logger.DebugContext(ctx, "pinging cardano node", slog.String("cmd", cmd))
 
 	_, err := c.executor.ExecCommand(ctx, nil, "cardano-cli", args...)
 	if err != nil {
@@ -173,7 +173,7 @@ func (c *Client) LeaderLogs(ctx context.Context, ledgetSet string, epochNonce st
 	}
 	output, err := c.executor.ExecCommand(ctx, envs, "cncli", args...)
 	if err != nil {
-		c.logger.Error(
+		c.logger.ErrorContext(ctx,
 			fmt.Sprintf("unable to execute cncli leaderlog command: %v", err),
 			slog.String("pool_name", pool.Name),
 			slog.String("pool_id", pool.ID),

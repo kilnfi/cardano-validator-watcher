@@ -137,20 +137,20 @@ func loadConfig() {
 
 	// read the config file
 	if err := viper.ReadInConfig(); err != nil {
-		logger.Error("unable to read config file", slog.String("error", err.Error()))
+		logger.ErrorContext(context.Background(), "unable to read config file", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
 
 	// unmarshal the config
 	cfg = &config.Config{}
 	if err := viper.Unmarshal(cfg); err != nil {
-		logger.Error("unable to unmarshal config", slog.String("error", err.Error()))
+		logger.ErrorContext(context.Background(), "unable to unmarshal config", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
 
 	// validate the config
 	if err := cfg.Validate(); err != nil {
-		logger.Error("invalid configuration", slog.String("error", err.Error()))
+		logger.ErrorContext(context.Background(), "invalid configuration", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
 }
@@ -226,19 +226,19 @@ func run(_ *cobra.Command, _ []string) error {
 	}
 
 	<-ctx.Done()
-	logger.Info("shutting down")
+	logger.InfoContext(ctx, "shutting down")
 
 	// shutting down HTTP server
 	ctx, cancel = context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	logger.Info("stopping http server")
+	logger.InfoContext(ctx, "stopping http server")
 	if err := server.Stop(ctx); err != nil {
-		logger.Error("unable to stop http service", slog.String("error", err.Error()))
+		logger.ErrorContext(ctx, "unable to stop http service", slog.String("error", err.Error()))
 	}
 
 	if err := eg.Wait(); err != nil {
 		if errors.Is(err, context.Canceled) {
-			logger.Info("Program interrupted by user")
+			logger.InfoContext(ctx, "Program interrupted by user")
 			return nil
 		}
 		return fmt.Errorf("error during execution: %w", err)
@@ -281,7 +281,7 @@ func startHTTPServer(eg *errgroup.Group, registry *prometheus.Registry, healthSt
 	}
 
 	eg.Go(func() error {
-		logger.Info(
+		logger.InfoContext(context.Background(),
 			"starting http server",
 			slog.String("component", "http-server"),
 			slog.String("addr", fmt.Sprintf("%s:%d", cfg.HTTP.Host, cfg.HTTP.Port)),
@@ -306,7 +306,7 @@ func startStatusWatcher(
 ) {
 	eg.Go(func() error {
 		statusWatcher := watcher.NewStatusWatcher(blockfrost, cardano, metrics, healthStore)
-		logger.Info(
+		logger.InfoContext(ctx,
 			"starting watcher",
 			slog.String("component", "status-watcher"),
 		)
@@ -331,7 +331,7 @@ func startPoolWatcher(
 			RefreshInterval: time.Second * time.Duration(cfg.PoolWatcherConfig.RefreshInterval),
 			Network:         cfg.Network,
 		}
-		logger.Info(
+		logger.InfoContext(ctx,
 			"starting watcher",
 			slog.String("component", "pool-watcher"),
 		)
@@ -359,7 +359,7 @@ func startNetworkWatcher(
 			RefreshInterval: time.Second * time.Duration(cfg.PoolWatcherConfig.RefreshInterval),
 			Network:         cfg.Network,
 		}
-		logger.Info(
+		logger.InfoContext(ctx,
 			"starting watcher",
 			slog.String("component", "network-watcher"),
 		)
@@ -388,7 +388,7 @@ func startBlockWatcher(
 			RefreshInterval: time.Second * time.Duration(cfg.BlockWatcherConfig.RefreshInterval),
 		}
 		blockWatcher := watcher.NewBlockWatcher(cardano, blockfrost, sl, pools, metrics, db, healthStore, options)
-		logger.Info(
+		logger.InfoContext(ctx,
 			"starting watcher",
 			slog.String("component", "block-watcher"),
 		)
@@ -403,7 +403,7 @@ func startBlockWatcher(
 // used for the flag parsing
 func checkError(err error, msg string) {
 	if err != nil {
-		logger.Error(msg, slog.String("error", err.Error()))
+		logger.ErrorContext(context.Background(), msg, slog.String("error", err.Error()))
 		os.Exit(1)
 	}
 }

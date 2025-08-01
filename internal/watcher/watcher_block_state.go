@@ -38,8 +38,8 @@ func (s *BlockWatcherState) LoadAndReconcile(ctx context.Context, currentEpoch i
 		return fmt.Errorf("failed to load block watcher state: %w", err)
 	}
 
-	s.logger.Debug("current epoch", slog.Int("current_epoch", currentEpoch))
-	s.logger.Debug("state epoch", slog.Int("state_epoch", s.Epoch))
+	s.logger.DebugContext(ctx, "current epoch", slog.Int("current_epoch", currentEpoch))
+	s.logger.DebugContext(ctx, "state epoch", slog.Int("state_epoch", s.Epoch))
 	if currentEpoch > s.Epoch {
 		block, err := s.blockfrost.GetFirstBlockInEpoch(ctx, currentEpoch)
 		if err != nil {

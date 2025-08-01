@@ -58,7 +58,7 @@ func (s *Service) Refresh(ctx context.Context, epoch bfAPI.Epoch) error {
 				}
 
 				if !refreshed {
-					s.logger.Info(
+					s.logger.InfoContext(ctx,
 						fmt.Sprintf("⏰ refreshing slots for pool: %s", pool.Name),
 						slog.String("pool_id", pool.ID),
 					)
@@ -66,7 +66,7 @@ func (s *Service) Refresh(ctx context.Context, epoch bfAPI.Epoch) error {
 						return &ErrSlotLeaderRefresh{PoolID: pool.ID, Epoch: epoch.Epoch, Message: err.Error()}
 					}
 				} else {
-					s.logger.Info(
+					s.logger.InfoContext(ctx,
 						fmt.Sprintf("💠 slots already refreshed for pool: %s", pool.Name),
 						slog.String("pool_id", pool.ID),
 					)
@@ -105,7 +105,7 @@ func (s *Service) GetNextSlotLeader(ctx context.Context, PoolID string, height i
 	}
 
 	lastSlot := schedule.Slots[len(schedule.Slots)-1]
-	s.logger.Debug(
+	s.logger.DebugContext(ctx,
 		fmt.Sprintf("last slot for pool %s is %d", PoolID, lastSlot),
 		slog.String("pool_id", PoolID),
 		slog.Int("last_slot", lastSlot),

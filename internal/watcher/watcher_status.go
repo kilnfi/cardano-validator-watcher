@@ -79,7 +79,7 @@ func (w *StatusWatcher) Start(ctx context.Context) error {
 
 		select {
 		case <-ctx.Done():
-			w.logger.Info("stopping watcher")
+			w.logger.InfoContext(ctx, "stopping watcher")
 			return fmt.Errorf("context done in watcher: %w", ctx.Err())
 		case <-ticker.C:
 		}
@@ -90,16 +90,16 @@ func (w *StatusWatcher) checkStatus(ctx context.Context) {
 	if w.healthStore.lastRefreshTime.IsZero() || time.Since(w.healthStore.lastRefreshTime) < RefreshMultiplier*RefreshInterval {
 		status, err := w.blockfrost.Health(ctx)
 		if err != nil {
-			w.logger.Error("unable to check blockfrost health", slog.String("error", err.Error()))
+			w.logger.ErrorContext(ctx, "unable to check blockfrost health", slog.String("error", err.Error()))
 		}
 
 		if !status.IsHealthy {
-			w.logger.Error("Blockfrost API is not responding")
+			w.logger.ErrorContext(ctx, "Blockfrost API is not responding")
 		}
 
 		isConnected, err := w.checkCardanoNodeConnection(ctx)
 		if err != nil {
-			w.logger.Error("Cardano node is not responding", slog.String("error", err.Error()))
+			w.logger.ErrorContext(ctx, "Cardano node is not responding", slog.String("error", err.Error()))
 		}
 
 		if !status.IsHealthy || !isConnected {
