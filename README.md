@@ -242,6 +242,7 @@ cardano:
 | `cardano_validator_watcher_pool_relay_count`                      | Number of relays associated with each pool                                  | GaugeVec    | `pool_name`, `pool_id`, `pool_instance` |
 | `cardano_validator_watcher_pool_pledge_met`                       | Indicates whether the pool has met its pledge requirements or not (0 or 1)  | GaugeVec    | `pool_name`, `pool_id`, `pool_instance` |
 | `cardano_validator_watcher_pool_saturation_level`                 | The current saturation level of the pool in percent                         | GaugeVec    | `pool_name`, `pool_id`, `pool_instance` |
+| `cardano_validator_watcher_pool_drep_registered`                  | Whether the pool owner is registered to a DRep (0 or 1)                    | GaugeVec    | `pool_name`, `pool_id`, `pool_instance` |
 | `cardano_validator_watcher_next_epoch_start_time`                 | Start time of the next epoch in seconds                                     | Gauge       | - |
 | `cardano_validator_watcher_monitored_validators_count`            | Number of validators monitored by the watcher                               | Gauge       | - |
 | `cardano_validator_watcher_missed_blocks`                         | Number of missed blocks in the current epoch                                | CounterVec  | `pool_name`, `pool_id`, `pool_instance`, `epoch` |
@@ -261,3 +262,4 @@ cardano:
 | `cardano_validator_watcher_network_active_stake`                  | Total active stake in the network                                           | Gauge       | - |
 | `cardano_validator_watcher_chain_id`                              | ID of the chain                                                             | Gauge       | - |
 | `cardano_validator_watcher_health_status`                         | Health status of the Cardano validator watcher: 1 = healthy, 0 = unhealthy  | Gauge       | - |
+
