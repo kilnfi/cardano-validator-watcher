@@ -43,7 +43,6 @@ linters:
     - usestdlibvars
     - whitespace
     - wrapcheck
-    - tagliatelle
     - sqlclosecheck
     - promlinter
     - prealloc

@@ -29,6 +29,7 @@ type PoolWatcher struct {
 	poolstats   pools.PoolStats
 	healthStore *HealthStore
 	cache       *ristretto.Cache[string, interface{}]
+	cacheTTL    time.Duration
 	opts        PoolWatcherOptions
 }
 
@@ -65,6 +66,7 @@ func NewPoolWatcher(
 		poolstats:   pools.GetPoolStats(),
 		healthStore: healthStore,
 		cache:       cache,
+		cacheTTL:    2 * opts.RefreshInterval,
 		opts:        opts,
 	}, nil
 }
@@ -160,6 +162,17 @@ func (w *PoolWatcher) fetch(ctx context.Context) error {
 			return fmt.Errorf("unable to retrieve relays for pool '%s': %w", pool.ID, err)
 		}
 		w.metrics.RelaysPerPool.WithLabelValues(*poolMetadata.Ticker, pool.ID, pool.Instance).Set(float64(len(poolRelays)))
+
+		// check if a pool owner is registered to a DRep
+		poolAccountInfo, err := w.getAccountInfo(ctx, poolInfo.RewardAccount)
+		if err != nil {
+			return fmt.Errorf("unable to retrieve account info for pool '%s': %w", pool.ID, err)
+		}
+		if poolAccountInfo.DrepID != nil {
+			w.metrics.PoolsDRepRegistered.WithLabelValues(pool.Name, pool.ID, pool.Instance).Set(1)
+		} else {
+			w.metrics.PoolsDRepRegistered.WithLabelValues(pool.Name, pool.ID, pool.Instance).Set(0)
+		}
 	}
 
 	return nil
@@ -175,7 +188,7 @@ func (w *PoolWatcher) getPoolMetadata(ctx context.Context, PoolID string) (bfAPI
 		if err != nil {
 			return metadata, fmt.Errorf("unable to retrieve metadata for pool '%s': %w", PoolID, err)
 		}
-		w.cache.SetWithTTL(PoolID+"_metadata", poolMetadata, 1, 2*w.opts.RefreshInterval)
+		w.cache.SetWithTTL(PoolID+"_metadata", poolMetadata, 1, w.cacheTTL)
 		w.cache.Wait()
 	}
 	metadata = poolMetadata.(bfAPI.PoolMetadata)
@@ -193,7 +206,7 @@ func (w *PoolWatcher) getPoolRelays(ctx context.Context, PoolID string) ([]bfAPI
 		if err != nil {
 			return relays, fmt.Errorf("unable to retrieve relays for pool '%s': %w", PoolID, err)
 		}
-		w.cache.SetWithTTL(PoolID+"_relays", poolRelays, 1, 2*w.opts.RefreshInterval)
+		w.cache.SetWithTTL(PoolID+"_relays", poolRelays, 1, w.cacheTTL)
 		w.cache.Wait()
 	}
 	relays = poolRelays.([]bfAPI.PoolRelay)
@@ -211,10 +224,27 @@ func (w *PoolWatcher) getPoolInfo(ctx context.Context, PoolID string) (bfAPI.Poo
 		if err != nil {
 			return pool, fmt.Errorf("unable to retrieve info for pool '%s': %w", PoolID, err)
 		}
-		w.cache.SetWithTTL(PoolID+"_info", poolInfo, 1, 2*w.opts.RefreshInterval)
+		w.cache.SetWithTTL(PoolID+"_info", poolInfo, 1, w.cacheTTL)
 		w.cache.Wait()
 	}
 	pool = poolInfo.(bfAPI.Pool)
 
 	return pool, nil
+}
+
+func (w *PoolWatcher) getAccountInfo(ctx context.Context, address string) (blockfrost.Account, error) {
+	var err error
+	var account blockfrost.Account
+
+	accountInfo, ok := w.cache.Get(address + "_info")
+	if !ok {
+		accountInfo, err = w.blockfrost.GetAccountInfo(ctx, address)
+		if err != nil {
+			return blockfrost.Account{}, fmt.Errorf("unable to retrieve info for address '%s': %w", address, err)
+		}
+		w.cache.SetWithTTL(address+"_info", accountInfo, 1, w.cacheTTL)
+		w.cache.Wait()
+	}
+	account = accountInfo.(blockfrost.Account)
+	return account, nil
 }

@@ -19,6 +19,7 @@ type Collection struct {
 	RelaysPerPool                     *prometheus.GaugeVec
 	PoolsPledgeMet                    *prometheus.GaugeVec
 	PoolsSaturationLevel              *prometheus.GaugeVec
+	PoolsDRepRegistered               *prometheus.GaugeVec
 	MonitoredValidatorsCount          *prometheus.GaugeVec
 	MissedBlocks                      *prometheus.CounterVec
 	ConsecutiveMissedBlocks           *prometheus.GaugeVec
@@ -127,6 +128,14 @@ func NewCollection() *Collection {
 			},
 			[]string{"pool_name", "pool_id", "pool_instance"},
 		),
+		PoolsDRepRegistered: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: "cardano_validator_watcher",
+				Name:      "pool_drep_registered",
+				Help:      "Whether the pool owner is registered to a DRep (0 or 1)",
+			},
+			[]string{"pool_name", "pool_id", "pool_instance"},
+		),
 		MonitoredValidatorsCount: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
 				Namespace: "cardano_validator_watcher",
@@ -216,6 +225,7 @@ func (m *Collection) MustRegister(reg prometheus.Registerer) {
 	reg.MustRegister(m.NextEpochStartTime)
 	reg.MustRegister(m.PoolsPledgeMet)
 	reg.MustRegister(m.PoolsSaturationLevel)
+	reg.MustRegister(m.PoolsDRepRegistered)
 	reg.MustRegister(m.MonitoredValidatorsCount)
 	reg.MustRegister(m.MissedBlocks)
 	reg.MustRegister(m.ConsecutiveMissedBlocks)

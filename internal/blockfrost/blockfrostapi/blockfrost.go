@@ -2,7 +2,11 @@ package blockfrostapi
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/blockfrost/blockfrost-go"
@@ -11,6 +15,8 @@ import (
 
 type Client struct {
 	blockfrost blockfrost.APIClient
+	apiURL     string
+	projectID  string
 }
 
 var _ bf.Client = (*Client)(nil)
@@ -34,6 +40,8 @@ func NewClient(opts ClientOptions) *Client {
 				},
 			},
 		),
+		apiURL:    opts.Server,
+		projectID: opts.ProjectID,
 	}
 }
 
@@ -172,4 +180,38 @@ func (c *Client) GetAllPools(ctx context.Context) ([]string, error) {
 //nolint:wrapcheck
 func (c *Client) GetNetworkInfo(ctx context.Context) (blockfrost.NetworkInfo, error) {
 	return c.blockfrost.Network(ctx)
+}
+
+func (c *Client) GetAccountInfo(ctx context.Context, address string) (bf.Account, error) {
+	account := bf.Account{}
+	url, err := url.JoinPath(c.apiURL, "accounts", address)
+	if err != nil {
+		return account, fmt.Errorf("failed to join URL path to get account details: %w", err)
+	}
+
+	cctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(cctx, http.MethodGet, url, nil)
+	if err != nil {
+		return account, fmt.Errorf("failed to create request to get account details: %w", err)
+	}
+
+	req.Header.Set("Project_id", c.projectID)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return account, fmt.Errorf("failed to send request to get account details: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return account, fmt.Errorf("failed to read response body to get account details: %w", err)
+	}
+
+	if err = json.Unmarshal(body, &account); err != nil {
+		return account, fmt.Errorf("failed to unmarshal account info: %w", err)
+	}
+
+	return account, nil
 }

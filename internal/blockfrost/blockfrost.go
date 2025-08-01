@@ -23,4 +23,20 @@ type Client interface {
 	GetGenesisInfo(ctx context.Context) (blockfrost.GenesisBlock, error)
 	GetAllPools(ctx context.Context) ([]string, error)
 	GetNetworkInfo(ctx context.Context) (blockfrost.NetworkInfo, error)
+	GetAccountInfo(ctx context.Context, stakeAddress string) (Account, error)
+}
+
+// TODO: remove it when the blockfrost-go library will be updated and return the DrepID
+type Account struct {
+	StakeAddress       string  `json:"stake_address"`
+	Active             bool    `json:"active"`
+	ActiveEpoch        *int64  `json:"active_epoch"`
+	ControlledAmount   string  `json:"controlled_amount"`
+	RewardsSum         string  `json:"rewards_sum"`
+	WithdrawalsSum     string  `json:"withdrawals_sum"`
+	ReservesSum        string  `json:"reserves_sum"`
+	TreasurySum        string  `json:"treasury_sum"`
+	WithdrawableAmount string  `json:"withdrawable_amount"`
+	PoolID             *string `json:"pool_id"`
+	DrepID             *string `json:"drep_id"`
 }
