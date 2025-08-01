@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DATA-DOG/go-sqlmock"
+	sqlmock "github.com/DATA-DOG/go-sqlmock"
 	"github.com/blockfrost/blockfrost-go"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
