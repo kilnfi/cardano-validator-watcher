@@ -7,7 +7,7 @@ replace github.com/mitchellh/mapstructure => github.com/go-viper/mapstructure/v2
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/blockfrost/blockfrost-go v0.3.0
-	github.com/dgraph-io/ristretto/v2 v2.2.0
+	github.com/dgraph-io/ristretto/v2 v2.3.0
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/mattn/go-sqlite3 v1.14.30
 	github.com/pressly/goose/v3 v3.24.3
@@ -46,7 +46,7 @@ require (
 	github.com/subosito/gotenv v1.6.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/exp v0.0.0-20250718183923-645b1fa84792 // indirect
-	golang.org/x/sys v0.34.0 // indirect
+	golang.org/x/sys v0.35.0 // indirect
 	golang.org/x/text v0.27.0 // indirect
 	google.golang.org/protobuf v1.36.6 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
