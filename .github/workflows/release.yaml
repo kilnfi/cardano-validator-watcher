@@ -59,7 +59,7 @@ jobs:
           OS_NAME: ${{ steps.export-variables.outputs.os_name }}
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: 1.24
 
