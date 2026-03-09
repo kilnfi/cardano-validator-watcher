@@ -1,8 +1,8 @@
 #  Builder
-ARG BUILDER=golang:1.25-alpine3.21
-ARG RUNNER=alpine:3.22
-ARG CARDANO_VERSION=10.5.2
-ARG CNCLI_VERSION=6.6.0
+ARG BUILDER=golang:1.25-alpine3.23
+ARG RUNNER=alpine:3.23
+ARG CARDANO_VERSION=10.6.2
+ARG CNCLI_VERSION=6.7.0
 
 FROM ${BUILDER} AS builder
 
@@ -19,7 +19,7 @@ RUN go mod download \
   && go mod verify
 
 RUN mkdir -p bin \
-      && wget https://github.com/IntersectMBO/cardano-node/releases/download/${CARDANO_VERSION}/cardano-node-${CARDANO_VERSION}-linux.tar.gz -O - | tar --strip-components=2 -xvzf - ./bin/cardano-cli -C bin \
+      && wget https://github.com/IntersectMBO/cardano-node/releases/download/${CARDANO_VERSION}/cardano-node-${CARDANO_VERSION}-linux-amd64.tar.gz -O - | tar --strip-components=2 -xvzf - ./bin/cardano-cli -C bin \
       && wget https://github.com/cardano-community/cncli/releases/download/v${CNCLI_VERSION}/cncli-${CNCLI_VERSION}-ubuntu22-x86_64-unknown-linux-musl.tar.gz -O - | tar -xvzf - -C bin \
       && chmod +x ./bin/cncli
 
