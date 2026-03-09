@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - '*'
+      - "*"
 
 permissions:
   contents: write
@@ -162,7 +162,7 @@ jobs:
           retention-days: 1
 
   merge:
-    runs-on: ubuntu-latest
+    runs-on: fixed-egress-4c-16g
     needs:
       - images
     steps:
