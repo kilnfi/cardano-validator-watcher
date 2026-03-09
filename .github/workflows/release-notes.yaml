@@ -16,7 +16,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-    runs-on: ubuntu-latest
+    runs-on: fixed-egress-4c-16g
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
