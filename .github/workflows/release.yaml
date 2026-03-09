@@ -19,6 +19,7 @@ env:
 jobs:
   binaries:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - runner: fixed-egress-4c-16g
@@ -45,7 +46,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install dependencies
+        shell: bash
         run: |
+          set -euo pipefail
+
           if [ "$OS_NAME" = "linux" ]; then
             sudo apt-get update
             if [ "$ARCH_NAME" = "amd64" ]; then
@@ -65,12 +69,18 @@ jobs:
 
       - name: Build ${{ matrix.os_name }}-${{ matrix.arch }} binary
         id: build
+        shell: bash
         run: |
+          set -euo pipefail
+
           OUTPUT_NAME="${{ env.BINARY_NAME }}_${{ github.ref_name }}_${OS_NAME}_${ARCH_NAME}"
           OUTPUT_DIR="dist/${OUTPUT_NAME}"
           ARCHIVE_NAME="${OUTPUT_NAME}.tar.gz"
+          ARCHIVE_PATH="${OUTPUT_DIR}/${ARCHIVE_NAME}"
 
-          echo "output_dir=${OUTPUT_DIR}" >> $GITHUB_OUTPUT
+          echo "output_dir=${OUTPUT_DIR}" >> "$GITHUB_OUTPUT"
+          echo "archive_path=${ARCHIVE_PATH}" >> "$GITHUB_OUTPUT"
+
           mkdir -p "${OUTPUT_DIR}"
 
           if [ "$OS_NAME" = "linux" ] && [ "$ARCH_NAME" = "arm64" ]; then
@@ -79,27 +89,54 @@ jobs:
           fi
 
           CGO_ENABLED=1 GOOS="$OS_NAME" GOARCH="$ARCH_NAME" \
-          go build -ldflags="-s -w" -o "${OUTPUT_DIR}/${{ env.BINARY_NAME }}" cmd/watcher/main.go
+            go build -ldflags="-s -w" -o "${OUTPUT_DIR}/${{ env.BINARY_NAME }}" cmd/watcher/main.go
 
-          tar -czvf "${OUTPUT_DIR}/${ARCHIVE_NAME}" -C "${OUTPUT_DIR}" "${{ env.BINARY_NAME }}"
+          tar -czvf "${ARCHIVE_PATH}" -C "${OUTPUT_DIR}" "${{ env.BINARY_NAME }}"
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.os_name }}-${{ matrix.arch }}
+          path: ${{ steps.build.outputs.archive_path }}
+          if-no-files-found: error
+          retention-days: 1
+
+  release_binaries:
+    name: Upload binaries to GitHub Release
+    needs: binaries
+    runs-on: fixed-egress-4c-16g
+    steps:
+      - name: Download binary artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: binary-*
+          merge-multiple: true
+
+      - name: Show downloaded artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          find dist -type f -name "*.tar.gz" -print
 
       - name: Upload binaries to release
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: "${{ steps.build.outputs.output_dir }}/*.tar.gz"
+          file: "dist/*.tar.gz"
           tag: ${{ github.ref_name }}
           file_glob: true
+          overwrite: true
+
   images:
     needs: binaries
     strategy:
+      fail-fast: false
       matrix:
-        os:
-          - ubuntu-latest
         arch:
           - amd64
           - arm64
-    runs-on: ${{ matrix.os }}
+    runs-on: fixed-egress-4c-16g
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -117,9 +154,9 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - uses: docker/build-push-action@v6
-        name: Build & Push Container Images
+      - name: Build & Push Container Images
         id: build
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile
@@ -129,16 +166,17 @@ jobs:
             org.opencontainers.image.name=${{ env.IMAGE_NAME }}
             org.opencontainers.image.version=${{ github.ref_name }}
             org.opencontainers.image.authors=contact@kiln.fi
-          platforms: linux/${{matrix.arch}}
+          platforms: linux/${{ matrix.arch }}
           push: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
           tags: |-
-            ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
-            ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:latest
+            ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}-${{ matrix.arch }}
 
       - name: Export digest
+        shell: bash
         run: |
+          set -euo pipefail
           mkdir -p /tmp/digests
           digest="${{ steps.build.outputs.digest }}"
           touch "/tmp/digests/${digest#sha256:}"
@@ -146,7 +184,7 @@ jobs:
       - name: Upload digest
         uses: actions/upload-artifact@v4
         with:
-          name: digests-linux-${{matrix.arch}}
+          name: digests-linux-${{ matrix.arch }}
           path: /tmp/digests/*
           if-no-files-found: error
           retention-days: 1
@@ -157,7 +195,7 @@ jobs:
       - images
     steps:
       - name: Download digests
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v4
         with:
           path: /tmp/digests
           pattern: digests-*
@@ -175,17 +213,21 @@ jobs:
 
       - name: Create manifest list and push
         working-directory: /tmp/digests
+        shell: bash
         run: |
+          set -euo pipefail
           docker buildx imagetools create \
-            -t "${{ env.REGISTRY_IMAGE }}:latest" \
-            -t "${{ env.REGISTRY_IMAGE }}:${{ github.ref_name }}" \
-            $(printf '${{ env.REGISTRY_IMAGE }}@sha256:%s ' *)
+            -t "${REGISTRY_IMAGE}:latest" \
+            -t "${REGISTRY_IMAGE}:${{ github.ref_name }}" \
+            $(printf "${REGISTRY_IMAGE}:${{ github.ref_name }}-%s " amd64 arm64)
         env:
           REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
 
       - name: Inspect image
+        shell: bash
         run: |
-          docker buildx imagetools inspect ${{ env.REGISTRY_IMAGE }}:latest
-          docker buildx imagetools inspect ${{ env.REGISTRY_IMAGE }}:${{ github.ref_name }}
+          set -euo pipefail
+          docker buildx imagetools inspect "${REGISTRY_IMAGE}:latest"
+          docker buildx imagetools inspect "${REGISTRY_IMAGE}:${{ github.ref_name }}"
         env:
           REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
