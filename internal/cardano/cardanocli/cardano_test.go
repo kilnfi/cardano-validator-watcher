@@ -46,7 +46,7 @@ func TestPing(t *testing.T) {
 		).Return(nil, nil)
 
 		client := NewClient(clientopts, nil, exec)
-		err := client.Ping(ctx)
+		err := client.PingVersion(ctx)
 		require.NoError(t, err)
 	})
 
@@ -75,8 +75,8 @@ func TestPing(t *testing.T) {
 		).Return(nil, errors.New("connection refused"))
 
 		client := NewClient(clientopts, nil, exec)
-		err := client.Ping(ctx)
-		assert.Equal(t, "unable to ping cardano RPC node: connection refused", err.Error())
+		err := client.PingVersion(ctx)
+		assert.Equal(t, "failed to ping Cardano node for version info: connection refused", err.Error())
 	})
 }
 

@@ -45,7 +45,7 @@ cardano_validator_watcher_health_status 1
 
 		// Mock the calls
 		clients.bf.EXPECT().Health(mock.Anything).Return(blockfrost.Health{IsHealthy: true}, nil)
-		clients.cardano.EXPECT().Ping(ctx).Return(nil)
+		clients.cardano.EXPECT().PingVersion(ctx).Return(nil)
 
 		healthStore := &HealthStore{}
 		watcher := NewStatusWatcher(clients.bf, clients.cardano, metrics, healthStore)
@@ -83,7 +83,7 @@ cardano_validator_watcher_health_status 0
 
 		// Mock the calls
 		clients.bf.EXPECT().Health(mock.Anything).Return(blockfrost.Health{IsHealthy: false}, nil)
-		clients.cardano.EXPECT().Ping(ctx).Return(nil)
+		clients.cardano.EXPECT().PingVersion(ctx).Return(nil)
 
 		healthStore := &HealthStore{}
 		watcher := NewStatusWatcher(clients.bf, clients.cardano, metrics, healthStore)
@@ -121,7 +121,7 @@ cardano_validator_watcher_health_status 0
 
 		// Mock the calls
 		clients.bf.EXPECT().Health(mock.Anything).Return(blockfrost.Health{IsHealthy: true}, nil)
-		clients.cardano.EXPECT().Ping(ctx).Return(errors.New("cardano node is down"))
+		clients.cardano.EXPECT().PingVersion(ctx).Return(errors.New("cardano node is down"))
 
 		healthStore := &HealthStore{}
 		watcher := NewStatusWatcher(clients.bf, clients.cardano, metrics, healthStore)

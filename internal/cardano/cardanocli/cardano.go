@@ -76,6 +76,24 @@ func (c *Client) Ping(ctx context.Context) error {
 	return nil
 }
 
+func (c *Client) PingVersion(ctx context.Context) error {
+	args := []string{
+		"ping",
+		"-u",
+		c.opts.SocketPath,
+		"-Q",
+	}
+
+	cmd := fmt.Sprintf("cardano-cli %s", strings.Join(args, " "))
+	c.logger.DebugContext(ctx, "pinging cardano node", slog.String("cmd", cmd))
+
+	_, err := c.executor.ExecCommand(ctx, nil, "cardano-cli", args...)
+	if err != nil {
+		return fmt.Errorf("failed to ping Cardano node for version info: %w", err)
+	}
+	return nil
+}
+
 func (c *Client) StakeSnapshot(ctx context.Context, PoolID string) (cardano.ClientQueryStakeSnapshotResponse, error) {
 	args := []string{
 		"query",
