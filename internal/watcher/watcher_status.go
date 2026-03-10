@@ -115,7 +115,7 @@ func (w *StatusWatcher) checkStatus(ctx context.Context) {
 // checkCardanoNodeConnection checks the connection to the cardano-node socket.
 // It returns true if the connection is successful, otherwise false.
 func (w *StatusWatcher) checkCardanoNodeConnection(ctx context.Context) (bool, error) {
-	if err := w.cardano.Ping(ctx); err != nil {
+	if err := w.cardano.PingVersion(ctx); err != nil {
 		return false, fmt.Errorf("unable to connect to cardano node: %w", err)
 	}
 	return true, nil
