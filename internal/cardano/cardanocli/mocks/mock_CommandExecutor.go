@@ -4,6 +4,7 @@ package cardanocli
 
 import (
 	context "context"
+	time "time"
 
 	mock "github.com/stretchr/testify/mock"
 )
@@ -21,14 +22,14 @@ func (_m *MockCommandExecutor) EXPECT() *MockCommandExecutor_Expecter {
 	return &MockCommandExecutor_Expecter{mock: &_m.Mock}
 }
 
-// ExecCommand provides a mock function with given fields: ctx, envs, name, arg
-func (_m *MockCommandExecutor) ExecCommand(ctx context.Context, envs []string, name string, arg ...string) ([]byte, error) {
+// ExecCommand provides a mock function with given fields: ctx, timeout, envs, name, arg
+func (_m *MockCommandExecutor) ExecCommand(ctx context.Context, timeout time.Duration, envs []string, name string, arg ...string) ([]byte, error) {
 	_va := make([]interface{}, len(arg))
 	for _i := range arg {
 		_va[_i] = arg[_i]
 	}
 	var _ca []interface{}
-	_ca = append(_ca, ctx, envs, name)
+	_ca = append(_ca, ctx, timeout, envs, name)
 	_ca = append(_ca, _va...)
 	ret := _m.Called(_ca...)
 
@@ -38,19 +39,19 @@ func (_m *MockCommandExecutor) ExecCommand(ctx context.Context, envs []string, n
 
 	var r0 []byte
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, []string, string, ...string) ([]byte, error)); ok {
-		return rf(ctx, envs, name, arg...)
+	if rf, ok := ret.Get(0).(func(context.Context, time.Duration, []string, string, ...string) ([]byte, error)); ok {
+		return rf(ctx, timeout, envs, name, arg...)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, []string, string, ...string) []byte); ok {
-		r0 = rf(ctx, envs, name, arg...)
+	if rf, ok := ret.Get(0).(func(context.Context, time.Duration, []string, string, ...string) []byte); ok {
+		r0 = rf(ctx, timeout, envs, name, arg...)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]byte)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, []string, string, ...string) error); ok {
-		r1 = rf(ctx, envs, name, arg...)
+	if rf, ok := ret.Get(1).(func(context.Context, time.Duration, []string, string, ...string) error); ok {
+		r1 = rf(ctx, timeout, envs, name, arg...)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -65,23 +66,24 @@ type MockCommandExecutor_ExecCommand_Call struct {
 
 // ExecCommand is a helper method to define mock.On call
 //   - ctx context.Context
+//   - timeout time.Duration
 //   - envs []string
 //   - name string
 //   - arg ...string
-func (_e *MockCommandExecutor_Expecter) ExecCommand(ctx interface{}, envs interface{}, name interface{}, arg ...interface{}) *MockCommandExecutor_ExecCommand_Call {
+func (_e *MockCommandExecutor_Expecter) ExecCommand(ctx interface{}, timeout interface{}, envs interface{}, name interface{}, arg ...interface{}) *MockCommandExecutor_ExecCommand_Call {
 	return &MockCommandExecutor_ExecCommand_Call{Call: _e.mock.On("ExecCommand",
-		append([]interface{}{ctx, envs, name}, arg...)...)}
+		append([]interface{}{ctx, timeout, envs, name}, arg...)...)}
 }
 
-func (_c *MockCommandExecutor_ExecCommand_Call) Run(run func(ctx context.Context, envs []string, name string, arg ...string)) *MockCommandExecutor_ExecCommand_Call {
+func (_c *MockCommandExecutor_ExecCommand_Call) Run(run func(ctx context.Context, timeout time.Duration, envs []string, name string, arg ...string)) *MockCommandExecutor_ExecCommand_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		variadicArgs := make([]string, len(args)-3)
-		for i, a := range args[3:] {
+		variadicArgs := make([]string, len(args)-4)
+		for i, a := range args[4:] {
 			if a != nil {
 				variadicArgs[i] = a.(string)
 			}
 		}
-		run(args[0].(context.Context), args[1].([]string), args[2].(string), variadicArgs...)
+		run(args[0].(context.Context), args[1].(time.Duration), args[2].([]string), args[3].(string), variadicArgs...)
 	})
 	return _c
 }
@@ -91,7 +93,7 @@ func (_c *MockCommandExecutor_ExecCommand_Call) Return(_a0 []byte, _a1 error) *M
 	return _c
 }
 
-func (_c *MockCommandExecutor_ExecCommand_Call) RunAndReturn(run func(context.Context, []string, string, ...string) ([]byte, error)) *MockCommandExecutor_ExecCommand_Call {
+func (_c *MockCommandExecutor_ExecCommand_Call) RunAndReturn(run func(context.Context, time.Duration, []string, string, ...string) ([]byte, error)) *MockCommandExecutor_ExecCommand_Call {
 	_c.Call.Return(run)
 	return _c
 }

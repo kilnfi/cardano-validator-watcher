@@ -10,10 +10,17 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/kilnfi/cardano-validator-watcher/internal/blockfrost"
 	"github.com/kilnfi/cardano-validator-watcher/internal/cardano"
 	"github.com/kilnfi/cardano-validator-watcher/internal/pools"
+)
+
+const (
+	pingTimeout          = 10 * time.Second
+	stakeSnapshotTimeout = 30 * time.Second
+	leaderLogsTimeout    = 5 * time.Minute
 )
 
 type Client struct {
@@ -47,49 +54,31 @@ func NewClient(opts ClientOptions, blockfrost blockfrost.Client, executor Comman
 
 func (c *Client) Ping(ctx context.Context) error {
 	args := []string{
-		"ping",
-		"-u",
-		c.opts.SocketPath,
-		"-t",
-		"-c",
-		"1",
+		"query", "tip",
+		"--socket-path", c.opts.SocketPath,
 	}
 
 	switch c.opts.Network {
 	case "mainnet":
-		args = append(args, "-m", "764824073")
+		args = append(args, "--mainnet")
 	case "preprod":
-		args = append(args, "-m", "1")
+		args = append(args, "--testnet-magic", "1")
 	case "sanchonet":
 		args = append(args, "--testnet-magic", "4")
 	case "preview":
 		args = append(args, "--testnet-magic", "2")
 	}
 
-	cmd := fmt.Sprintf("cardano-cli %s", strings.Join(args, " "))
-	c.logger.DebugContext(ctx, "pinging cardano node", slog.String("cmd", cmd))
+	c.logger.DebugContext(ctx, "querying cardano node tip",
+		slog.String("cmd", fmt.Sprintf("cardano-cli %s", strings.Join(args, " "))),
+	)
 
-	_, err := c.executor.ExecCommand(ctx, nil, "cardano-cli", args...)
+	output, err := c.executor.ExecCommand(ctx, pingTimeout, nil, "cardano-cli", args...)
 	if err != nil {
-		return fmt.Errorf("unable to ping cardano RPC node: %w", err)
-	}
-	return nil
-}
-
-func (c *Client) PingVersion(ctx context.Context) error {
-	args := []string{
-		"ping",
-		"-u",
-		c.opts.SocketPath,
-		"-Q",
-	}
-
-	cmd := fmt.Sprintf("cardano-cli %s", strings.Join(args, " "))
-	c.logger.DebugContext(ctx, "pinging cardano node", slog.String("cmd", cmd))
-
-	_, err := c.executor.ExecCommand(ctx, nil, "cardano-cli", args...)
-	if err != nil {
-		return fmt.Errorf("failed to ping Cardano node for version info: %w", err)
+		if len(output) > 0 {
+			return fmt.Errorf("failed to query Cardano node tip: %w: %s", err, output)
+		}
+		return fmt.Errorf("failed to query Cardano node tip: %w", err)
 	}
 	return nil
 }
@@ -115,7 +104,7 @@ func (c *Client) StakeSnapshot(ctx context.Context, PoolID string) (cardano.Clie
 		args = append(args, "--testnet-magic", "2")
 	}
 
-	output, err := c.executor.ExecCommand(ctx, nil, "cardano-cli", args...)
+	output, err := c.executor.ExecCommand(ctx, stakeSnapshotTimeout, nil, "cardano-cli", args...)
 	if err != nil {
 		fmt.Fprintln(os.Stdout, string(output))
 		return cardano.ClientQueryStakeSnapshotResponse{}, fmt.Errorf("unable to query stake snapshot for pool %s: %w", PoolID, err)
@@ -189,7 +178,7 @@ func (c *Client) LeaderLogs(ctx context.Context, ledgetSet string, epochNonce st
 	envs := []string{
 		"RUST_LOG=error",
 	}
-	output, err := c.executor.ExecCommand(ctx, envs, "cncli", args...)
+	output, err := c.executor.ExecCommand(ctx, leaderLogsTimeout, envs, "cncli", args...)
 	if err != nil {
 		c.logger.ErrorContext(ctx,
 			fmt.Sprintf("unable to execute cncli leaderlog command: %v", err),

@@ -37,6 +37,7 @@ cardano_validator_watcher_health_status 1
 		metrics.MustRegister(registry)
 
 		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 		go func() {
 			ticker := time.NewTimer(time.Second * 10)
 			<-ticker.C
@@ -45,7 +46,7 @@ cardano_validator_watcher_health_status 1
 
 		// Mock the calls
 		clients.bf.EXPECT().Health(mock.Anything).Return(blockfrost.Health{IsHealthy: true}, nil)
-		clients.cardano.EXPECT().PingVersion(ctx).Return(nil)
+		clients.cardano.EXPECT().Ping(ctx).Return(nil)
 
 		healthStore := &HealthStore{}
 		watcher := NewStatusWatcher(clients.bf, clients.cardano, metrics, healthStore)
@@ -75,6 +76,7 @@ cardano_validator_watcher_health_status 0
 		metrics.MustRegister(registry)
 
 		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 		go func() {
 			ticker := time.NewTimer(time.Second * 10)
 			<-ticker.C
@@ -83,7 +85,7 @@ cardano_validator_watcher_health_status 0
 
 		// Mock the calls
 		clients.bf.EXPECT().Health(mock.Anything).Return(blockfrost.Health{IsHealthy: false}, nil)
-		clients.cardano.EXPECT().PingVersion(ctx).Return(nil)
+		clients.cardano.EXPECT().Ping(ctx).Return(nil)
 
 		healthStore := &HealthStore{}
 		watcher := NewStatusWatcher(clients.bf, clients.cardano, metrics, healthStore)
@@ -113,6 +115,7 @@ cardano_validator_watcher_health_status 0
 		metrics.MustRegister(registry)
 
 		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 		go func() {
 			ticker := time.NewTimer(time.Second * 10)
 			<-ticker.C
@@ -121,7 +124,7 @@ cardano_validator_watcher_health_status 0
 
 		// Mock the calls
 		clients.bf.EXPECT().Health(mock.Anything).Return(blockfrost.Health{IsHealthy: true}, nil)
-		clients.cardano.EXPECT().PingVersion(ctx).Return(errors.New("cardano node is down"))
+		clients.cardano.EXPECT().Ping(ctx).Return(errors.New("cardano node is down"))
 
 		healthStore := &HealthStore{}
 		watcher := NewStatusWatcher(clients.bf, clients.cardano, metrics, healthStore)
