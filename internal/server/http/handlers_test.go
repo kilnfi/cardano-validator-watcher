@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -18,7 +19,7 @@ func TestDefaultHandler(t *testing.T) {
 	t.Run("GoodPath_DefaultHandlerIsOk", func(t *testing.T) {
 		t.Parallel()
 
-		r := httptest.NewRequest(http.MethodGet, "/", nil)
+		r := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 		w := httptest.NewRecorder()
 
 		healthStore := watcher.NewHealthStore()
@@ -35,7 +36,7 @@ func TestDefaultHandler(t *testing.T) {
 	t.Run("GoodPath_DefaultHandlerShouldReturn404ForUnknownPath", func(t *testing.T) {
 		t.Parallel()
 
-		r := httptest.NewRequest(http.MethodGet, "/fake", nil)
+		r := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/fake", nil)
 		w := httptest.NewRecorder()
 
 		healthStore := watcher.NewHealthStore()
@@ -56,7 +57,7 @@ func TestLiveProbe(t *testing.T) {
 	t.Run("GoodPath_LiveProbeIsReady", func(t *testing.T) {
 		t.Parallel()
 
-		r := httptest.NewRequest(http.MethodGet, "/livez", nil)
+		r := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/livez", nil)
 		w := httptest.NewRecorder()
 
 		healthStore := watcher.NewHealthStore()
@@ -77,7 +78,7 @@ func TestReadyProbe(t *testing.T) {
 	t.Run("GoodPath_ReadyProbeIsReady", func(t *testing.T) {
 		t.Parallel()
 
-		r := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+		r := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/readyz", nil)
 		w := httptest.NewRecorder()
 
 		healthStore := watcher.NewHealthStore()
@@ -93,7 +94,7 @@ func TestReadyProbe(t *testing.T) {
 	})
 
 	t.Run("SadPath_ReadyProbeIsNotReady", func(t *testing.T) {
-		r := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+		r := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/readyz", nil)
 		w := httptest.NewRecorder()
 
 		healthStore := watcher.NewHealthStore()
@@ -115,7 +116,7 @@ func TestMetricsHandler(t *testing.T) {
 	t.Run("GoodPath_MetricsHandlerIsOk", func(t *testing.T) {
 		t.Parallel()
 
-		r := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+		r := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/metrics", nil)
 		w := httptest.NewRecorder()
 
 		registry := prometheus.NewRegistry()

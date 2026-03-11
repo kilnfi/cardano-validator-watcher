@@ -101,6 +101,7 @@ func setupContextWithTimeout(t *testing.T, d time.Duration) context.Context {
 	t.Helper()
 
 	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
 	go func() {
 		time.AfterFunc(d, cancel)
 	}()

@@ -21,7 +21,7 @@ import (
 )
 
 func TestPing(t *testing.T) {
-	t.Run("GoodPath_PingOK", func(t *testing.T) {
+	t.Run("GoodPath", func(t *testing.T) {
 		clientopts := ClientOptions{
 			Network:    "preprod",
 			SocketPath: "/tmp/cardano.socket",
@@ -33,24 +33,23 @@ func TestPing(t *testing.T) {
 		exec := &mocks.MockCommandExecutor{}
 		exec.EXPECT().ExecCommand(
 			ctx,
+			pingTimeout,
 			mock.Anything,
 			"cardano-cli",
-			"ping",
-			"-u",
+			"query",
+			"tip",
+			"--socket-path",
 			clientopts.SocketPath,
-			"-t",
-			"-c",
-			"1",
-			"-m",
+			"--testnet-magic",
 			"1",
 		).Return(nil, nil)
 
 		client := NewClient(clientopts, nil, exec)
-		err := client.PingVersion(ctx)
+		err := client.Ping(ctx)
 		require.NoError(t, err)
 	})
 
-	t.Run("SadPath_PingKO", func(t *testing.T) {
+	t.Run("SadPath", func(t *testing.T) {
 		clientopts := ClientOptions{
 			Network:    "preprod",
 			SocketPath: "/tmp/cardano.socket",
@@ -62,21 +61,20 @@ func TestPing(t *testing.T) {
 		exec := &mocks.MockCommandExecutor{}
 		exec.EXPECT().ExecCommand(
 			ctx,
+			pingTimeout,
 			mock.Anything,
 			"cardano-cli",
-			"ping",
-			"-u",
+			"query",
+			"tip",
+			"--socket-path",
 			clientopts.SocketPath,
-			"-t",
-			"-c",
-			"1",
-			"-m",
+			"--testnet-magic",
 			"1",
 		).Return(nil, errors.New("connection refused"))
 
 		client := NewClient(clientopts, nil, exec)
-		err := client.PingVersion(ctx)
-		assert.Equal(t, "failed to ping Cardano node for version info: connection refused", err.Error())
+		err := client.Ping(ctx)
+		assert.Equal(t, "failed to query Cardano node tip: connection refused", err.Error())
 	})
 }
 
@@ -107,6 +105,7 @@ func TestStakeSnapshot(t *testing.T) {
 	require.NoError(t, err)
 	exec.EXPECT().ExecCommand(
 		ctx,
+		stakeSnapshotTimeout,
 		mock.Anything,
 		"cardano-cli",
 		"query",
@@ -153,7 +152,7 @@ func TestLeaderLogs(t *testing.T) {
 	vrf, _ := os.Create("pool-0.vrf.skey")
 	defer func() {
 		os.RemoveAll(clientopts.ConfigDir)
-		os.Remove(vrf.Name()) //nolint:gosec // G703: filename is hardcoded, not user-controlled
+		os.Remove(vrf.Name()) //nolint:gosec // G703: filename is hardcoded in test, not user-controlled
 	}()
 
 	bf.EXPECT().GetPoolInfo(ctx, "pool-0").Return(blockfrost.Pool{
@@ -181,6 +180,7 @@ func TestLeaderLogs(t *testing.T) {
 	exec := &mocks.MockCommandExecutor{}
 	exec.EXPECT().ExecCommand(
 		ctx,
+		stakeSnapshotTimeout,
 		mock.Anything,
 		"cardano-cli",
 		"query",
@@ -211,6 +211,7 @@ func TestLeaderLogs(t *testing.T) {
 	require.NoError(t, err)
 	exec.EXPECT().ExecCommand(
 		ctx,
+		leaderLogsTimeout,
 		mock.Anything,
 		"cncli",
 		"leaderlog",

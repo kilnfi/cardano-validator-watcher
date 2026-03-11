@@ -55,6 +55,11 @@ type CardanoConfig struct {
 	ConfigDir  string `mapstructure:"config-dir"`
 	Timezone   string `mapstructure:"timezone"`
 	SocketPath string `mapstructure:"socket-path"`
+
+	// NodeHost/SocatPort replace the socat sidecar in the watcher pod:
+	// the watcher creates a local Unix socket proxy to node-host:socat-port.
+	NodeHost  string `mapstructure:"node-host"`
+	SocatPort int    `mapstructure:"socat-port"`
 }
 
 type DatabaseConfig struct {

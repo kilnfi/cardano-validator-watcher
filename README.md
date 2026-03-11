@@ -16,18 +16,26 @@ This project use the following dependencies:
 
 ## Usage
 
-To start the watcher, you need to open a socket connection with your Cardano node. This can be done using the following commands:
+The watcher needs access to your Cardano node's socket. Two options are available:
 
-### With Kubernetes
+### Option A — socat sidecar (watcher has direct socket access)
+
+Run socat alongside the watcher to expose the node socket locally:
+
 ```bash
+# With Kubernetes
 kubectl port-forward pod/<POD_NAME> 3002 &
-socat UNIX-LISTEN:/tmp/cardano.socket,fork,reuseaddr,unlink-early, TCP:127.0.0.1:3002
+socat UNIX-LISTEN:/tmp/cardano.socket,fork,reuseaddr,unlink-early TCP:127.0.0.1:3002
+
+# Without Kubernetes
+socat UNIX-LISTEN:/tmp/cardano.socket,fork,reuseaddr,unlink-early TCP:<IP>:<PORT>
 ```
 
-### Without Kubernetes
-```bash
-socat UNIX-LISTEN:/tmp/cardano.socket,fork,reuseaddr,unlink-early, TCP:<IP>:<PORT>
-```
+Then configure `socket-path` in the watcher config.
+
+### Option B — Go socket proxy (no socat needed in the watcher pod)
+
+If socat is already running on the node pod (exposing the socket over TCP), the watcher can connect directly without a local socat sidecar. Configure `node-host` and `socat-port` and the watcher will manage the proxy internally.
 
 Ensure that you have downloaded the [Genesis configuration files](https://book.world.dev.cardano.org/environments.html). You also need to provide the VRF signing key for each monitored pool.
 
@@ -49,7 +57,9 @@ Then, to start the watcher, execute the following command:
 | `--database-path`                     | Path to the local database mainly used by the Cardano client                          | `watcher.db`              | No       |
 | `--cardano-config-dir`                | Path to the directory where Cardano configuration files are stored                    | `/config`                 | No       |
 | `--cardano-timezone`                  | Timezone to use with cardano-cli                                                      | `UTC`                     | No       |
-| `--cardano-socket-path`               | Path of the socket to communicate with a Cardano node                                 | `/var/run/cardano.socket` | No       |
+| `--cardano-socket-path`               | Path of the socket to communicate with a Cardano node (Option A)                      | `/var/run/cardano.socket` | No       |
+| `--cardano-node-host`                 | Hostname/IP of the cardano-node service (Option B)                                    |                           | No       |
+| `--cardano-socat-port`                | TCP port where socat on the node pod exposes the Unix socket (Option B)               |                           | No       |
 | `--blockfrost-project-id`             | Blockfrost project ID                                                                 |                           | Yes      |
 | `--blockfrost-endpoint`               | Blockfrost API endpoint                                                               |                           | Yes      |
 | `--blockfrost-max-routines`           | Number of routines used by Blockfrost to perform concurrent actions                   | `10`                      | No       |
@@ -222,17 +232,27 @@ http:
 
 ### Cardano Settings
 
-| Field          | Description                                                  | Example                   |
-|----------------|--------------------------------------------------------------|---------------------------|
-| `config-dir`   | Path to the directory where Cardano configuration files are stored | `"config"`                |
-| `socket-path`  | Path of the socket to communicate with a Cardano node        | `"/tmp/cardano.socket"`   |
-| `timezone`     | Timezone to use with cardano-cli                             | `"UTC"`                   |
+| Field          | Description                                                              | Example                      |
+|----------------|--------------------------------------------------------------------------|------------------------------|
+| `config-dir`   | Path to the directory where Cardano configuration files are stored       | `"config"`                   |
+| `timezone`     | Timezone to use with cardano-cli                                         | `"UTC"`                      |
+| `socket-path`  | Path of the socket to communicate with a Cardano node (Option A)         | `"/tmp/cardano.socket"`      |
+| `node-host`    | Hostname/IP of the cardano-node service (Option B)                       | `"cardano-node-service"`     |
+| `socat-port`   | TCP port where socat on the node pod exposes the Unix socket (Option B)  | `3002`                       |
 
 ```yaml
+# Option A: socat sidecar in the watcher pod
 cardano:
   config-dir: "config"
-  socket-path: "/tmp/cardano.socket"
   timezone: "UTC"
+  socket-path: "/tmp/cardano.socket"
+
+# Option B: Go-managed proxy, no socat needed in the watcher pod
+cardano:
+  config-dir: "config"
+  timezone: "UTC"
+  node-host: "cardano-node-service"
+  socat-port: 3002
 ```
 
 ## Metrics
