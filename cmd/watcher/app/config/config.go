@@ -18,6 +18,11 @@ type Config struct {
 	PoolWatcherConfig    PoolWatcherConfig    `mapstructure:"pool-watcher"`
 	NetworkWatcherConfig NetworkWatcherConfig `mapstructure:"network-watcher"`
 	StatusWatcherConfig  StatusWatcherConfig  `mapstructure:"status-watcher"`
+	SlotLeaderConfig     SlotLeaderConfig     `mapstructure:"slot-leader"`
+}
+
+type SlotLeaderConfig struct {
+	Concurrency int `mapstructure:"concurrency"`
 }
 
 type BlockWatcherConfig struct {

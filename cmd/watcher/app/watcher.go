@@ -99,6 +99,7 @@ func NewWatcherCommand() *cobra.Command {
 	cmd.Flags().IntP("pool-watcher-refresh-interval", "", 60, "Interval at which the pool watcher collects data about the monitored pools (in seconds)")
 	cmd.Flags().BoolP("block-watcher-enabled", "", true, "Enable block watcher")
 	cmd.Flags().IntP("block-watcher-refresh-interval", "", 60, "Interval at which the block watcher collects and process slots (in seconds)")
+	cmd.Flags().IntP("slot-leader-concurrency", "", 0, "max concurrent cncli leaderlog processes (0 = unlimited)")
 
 	// bind flag to viper
 	checkError(viper.BindPFlag("log-level", cmd.Flag("log-level")), "unable to bind log-level flag")
@@ -122,6 +123,7 @@ func NewWatcherCommand() *cobra.Command {
 	checkError(viper.BindPFlag("pool-watcher.refresh-interval", cmd.Flag("pool-watcher-refresh-interval")), "unable to bind pool-watcher-refresh-interval flag")
 	checkError(viper.BindPFlag("block-watcher.enabled", cmd.Flag("block-watcher-enabled")), "unable to bind block-watcher-enabled flag")
 	checkError(viper.BindPFlag("block-watcher.refresh-interval", cmd.Flag("block-watcher-refresh-interval")), "unable to bind block-watcher-refresh-interval flag")
+	checkError(viper.BindPFlag("slot-leader.concurrency", cmd.Flag("slot-leader-concurrency")), "unable to bind slot-leader-concurrency flag")
 
 	return cmd
 }
@@ -213,10 +215,17 @@ func run(_ *cobra.Command, _ []string) error {
 	}
 
 	// Launch slot leader calculation for the current slot
-	slotLeaderService := slotleader.NewSlotLeaderService(database.DB, cardano, blockfrost, cfg.Pools, metrics)
-	if err := slotLeaderService.Refresh(ctx, epoch); err != nil {
+	slotLeaderService := slotleader.NewSlotLeaderService(database.DB, cardano, blockfrost, cfg.Pools, metrics, cfg.SlotLeaderConfig.Concurrency)
+	if err := slotLeaderService.RefreshCurrent(ctx, epoch); err != nil {
 		return fmt.Errorf("unable to refresh slot leaders: %w", err)
 	}
+
+	eg.Go(func() error {
+		logger.InfoContext(ctx, "starting next epoch scheduler",
+			slog.String("component", "next-epoch-scheduler"),
+		)
+		return slotLeaderService.RunNextEpochScheduler(ctx)
+	})
 
 	healthStore := watcher.NewHealthStore()
 
@@ -280,7 +289,6 @@ func createCardanoClient(blockfrost blockfrost.Client, socketPath string) cardan
 		Network:    cfg.Network,
 		SocketPath: socketPath,
 		Timezone:   cfg.Cardano.Timezone,
-		DBPath:     cfg.Database.Path,
 	}
 	return cardanocli.NewClient(opts, blockfrost, &cardanocli.RealCommandExecutor{})
 }
