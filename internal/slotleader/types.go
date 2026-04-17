@@ -15,7 +15,7 @@ import (
 )
 
 type SlotLeader interface {
-	Refresh(ctx context.Context, epoch bfAPI.Epoch) error
+	RefreshCurrent(ctx context.Context, epoch bfAPI.Epoch) error
 	IsSlotLeader(ctx context.Context, PoolID string, slot int, epoch int) (bool, error)
 	IsSlotsEmpty(ctx context.Context, PoolID string, epoch int) (bool, error)
 	GetSlotLeaders(ctx context.Context, PoolID string, epoch int) (Schedule, error)
@@ -23,12 +23,13 @@ type SlotLeader interface {
 }
 
 type Service struct {
-	db         *sqlx.DB
-	logger     *slog.Logger
-	pools      pools.Pools
-	cardano    cardano.CardanoClient
-	blockfrost blockfrost.Client
-	metrics    *metrics.Collection
+	db          *sqlx.DB
+	logger      *slog.Logger
+	pools       pools.Pools
+	cardano     cardano.CardanoClient
+	blockfrost  blockfrost.Client
+	metrics     *metrics.Collection
+	concurrency int
 }
 
 type slots []int

@@ -7,7 +7,7 @@ import (
 )
 
 type CardanoClient interface {
-	LeaderLogs(ctx context.Context, ledgetSet string, epochNonce string, pool pools.Pool) error
+	LeaderLogs(ctx context.Context, ledgerSet string, epochNonce string, pool pools.Pool) (ClientLeaderLogsResponse, error)
 	StakeSnapshot(ctx context.Context, PoolID string) (ClientQueryStakeSnapshotResponse, error)
 	Ping(ctx context.Context) error
 }

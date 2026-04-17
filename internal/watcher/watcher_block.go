@@ -227,7 +227,7 @@ func (w *BlockWatcher) handleEpochtransition(ctx context.Context) error {
 
 	// Update the slot leader schedule for each pool
 	w.logger.InfoContext(ctx, "🔄 Refreshing slot leader schedule for the new epoch", slog.Int("epoch", epoch.Epoch))
-	if err := w.slotLeaderService.Refresh(ctx, epoch); err != nil {
+	if err := w.slotLeaderService.RefreshCurrent(ctx, epoch); err != nil {
 		return fmt.Errorf("handleEpochTransition: failed to refresh slot leader schedule for the new epoch: %w", err)
 	}
 
