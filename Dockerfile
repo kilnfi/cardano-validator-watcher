@@ -1,5 +1,5 @@
 #  Builder
-ARG BUILDER=golang:1.25-alpine3.23
+ARG BUILDER=golang:1.26-alpine3.23
 ARG RUNNER=alpine:3.23
 ARG CARDANO_VERSION=10.6.2
 ARG CNCLI_VERSION=6.7.0
