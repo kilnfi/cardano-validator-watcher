@@ -25,22 +25,32 @@ func (_m *MockCardanoClient) EXPECT() *MockCardanoClient_Expecter {
 	return &MockCardanoClient_Expecter{mock: &_m.Mock}
 }
 
-// LeaderLogs provides a mock function with given fields: ctx, ledgetSet, epochNonce, pool
-func (_m *MockCardanoClient) LeaderLogs(ctx context.Context, ledgetSet string, epochNonce string, pool pools.Pool) error {
-	ret := _m.Called(ctx, ledgetSet, epochNonce, pool)
+// LeaderLogs provides a mock function with given fields: ctx, ledgerSet, epochNonce, pool
+func (_m *MockCardanoClient) LeaderLogs(ctx context.Context, ledgerSet string, epochNonce string, pool pools.Pool) (cardano.ClientLeaderLogsResponse, error) {
+	ret := _m.Called(ctx, ledgerSet, epochNonce, pool)
 
 	if len(ret) == 0 {
 		panic("no return value specified for LeaderLogs")
 	}
 
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string, pools.Pool) error); ok {
-		r0 = rf(ctx, ledgetSet, epochNonce, pool)
+	var r0 cardano.ClientLeaderLogsResponse
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, pools.Pool) (cardano.ClientLeaderLogsResponse, error)); ok {
+		return rf(ctx, ledgerSet, epochNonce, pool)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, pools.Pool) cardano.ClientLeaderLogsResponse); ok {
+		r0 = rf(ctx, ledgerSet, epochNonce, pool)
 	} else {
-		r0 = ret.Error(0)
+		r0 = ret.Get(0).(cardano.ClientLeaderLogsResponse)
 	}
 
-	return r0
+	if rf, ok := ret.Get(1).(func(context.Context, string, string, pools.Pool) error); ok {
+		r1 = rf(ctx, ledgerSet, epochNonce, pool)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
 }
 
 // MockCardanoClient_LeaderLogs_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'LeaderLogs'
@@ -50,26 +60,26 @@ type MockCardanoClient_LeaderLogs_Call struct {
 
 // LeaderLogs is a helper method to define mock.On call
 //   - ctx context.Context
-//   - ledgetSet string
+//   - ledgerSet string
 //   - epochNonce string
 //   - pool pools.Pool
-func (_e *MockCardanoClient_Expecter) LeaderLogs(ctx interface{}, ledgetSet interface{}, epochNonce interface{}, pool interface{}) *MockCardanoClient_LeaderLogs_Call {
-	return &MockCardanoClient_LeaderLogs_Call{Call: _e.mock.On("LeaderLogs", ctx, ledgetSet, epochNonce, pool)}
+func (_e *MockCardanoClient_Expecter) LeaderLogs(ctx interface{}, ledgerSet interface{}, epochNonce interface{}, pool interface{}) *MockCardanoClient_LeaderLogs_Call {
+	return &MockCardanoClient_LeaderLogs_Call{Call: _e.mock.On("LeaderLogs", ctx, ledgerSet, epochNonce, pool)}
 }
 
-func (_c *MockCardanoClient_LeaderLogs_Call) Run(run func(ctx context.Context, ledgetSet string, epochNonce string, pool pools.Pool)) *MockCardanoClient_LeaderLogs_Call {
+func (_c *MockCardanoClient_LeaderLogs_Call) Run(run func(ctx context.Context, ledgerSet string, epochNonce string, pool pools.Pool)) *MockCardanoClient_LeaderLogs_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(context.Context), args[1].(string), args[2].(string), args[3].(pools.Pool))
 	})
 	return _c
 }
 
-func (_c *MockCardanoClient_LeaderLogs_Call) Return(_a0 error) *MockCardanoClient_LeaderLogs_Call {
-	_c.Call.Return(_a0)
+func (_c *MockCardanoClient_LeaderLogs_Call) Return(_a0 cardano.ClientLeaderLogsResponse, _a1 error) *MockCardanoClient_LeaderLogs_Call {
+	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *MockCardanoClient_LeaderLogs_Call) RunAndReturn(run func(context.Context, string, string, pools.Pool) error) *MockCardanoClient_LeaderLogs_Call {
+func (_c *MockCardanoClient_LeaderLogs_Call) RunAndReturn(run func(context.Context, string, string, pools.Pool) (cardano.ClientLeaderLogsResponse, error)) *MockCardanoClient_LeaderLogs_Call {
 	_c.Call.Return(run)
 	return _c
 }

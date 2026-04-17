@@ -134,7 +134,6 @@ func TestLeaderLogs(t *testing.T) {
 	clientopts := ClientOptions{
 		Network:    "preprod",
 		SocketPath: "/tmp/cardano.socket",
-		DBPath:     "db.db",
 		Timezone:   "UTC",
 	}
 	bf := blockfrostmocks.NewMockClient(t)
@@ -230,7 +229,7 @@ func TestLeaderLogs(t *testing.T) {
 		"--tz",
 		clientopts.Timezone,
 		"--db",
-		clientopts.DBPath,
+		mock.AnythingOfType("string"),
 		"--pool-stake",
 		strconv.Itoa(expected.Pools["pool-0-hex"].StakeSet),
 		"--active-stake",
@@ -238,6 +237,7 @@ func TestLeaderLogs(t *testing.T) {
 	).Return(expectedOutputByte, nil)
 
 	client := NewClient(clientopts, bf, exec)
-	err = client.LeaderLogs(ctx, "current", "nonce", pool)
+	response, err := client.LeaderLogs(ctx, "current", "nonce", pool)
 	require.NoError(t, err)
+	require.Equal(t, expectedOutput, response)
 }

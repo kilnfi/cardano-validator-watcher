@@ -2,6 +2,7 @@ package cardanocli
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/kilnfi/cardano-validator-watcher/internal/blockfrost"
 	"github.com/kilnfi/cardano-validator-watcher/internal/cardano"
@@ -33,7 +36,6 @@ type Client struct {
 var _ cardano.CardanoClient = (*Client)(nil)
 
 type ClientOptions struct {
-	DBPath     string
 	ConfigDir  string
 	Network    string
 	SocketPath string
@@ -118,20 +120,38 @@ func (c *Client) StakeSnapshot(ctx context.Context, PoolID string) (cardano.Clie
 	return response, nil
 }
 
-func (c *Client) LeaderLogs(ctx context.Context, ledgetSet string, epochNonce string, pool pools.Pool) error {
+func (c *Client) LeaderLogs(ctx context.Context, ledgerSet string, epochNonce string, pool pools.Pool) (cardano.ClientLeaderLogsResponse, error) {
 	byronGenesisfile := filepath.Join(c.opts.ConfigDir, "byron.json")
 	shelleyGenesisfile := filepath.Join(c.opts.ConfigDir, "shelley.json")
 	if _, err := os.Stat(byronGenesisfile); errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("unable to find byron genesis file: %w", err)
+		return cardano.ClientLeaderLogsResponse{}, fmt.Errorf("unable to find byron genesis file: %w", err)
 	}
 
 	if _, err := os.Stat(shelleyGenesisfile); errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("unable to find shelley genesis file: %w", err)
+		return cardano.ClientLeaderLogsResponse{}, fmt.Errorf("unable to find shelley genesis file: %w", err)
 	}
 
 	if _, err := os.Stat(pool.Key); errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("unable to find pool vrf skey file: %w", err)
+		return cardano.ClientLeaderLogsResponse{}, fmt.Errorf("unable to find pool vrf skey file: %w", err)
 	}
+
+	tmpFile, err := os.CreateTemp("", "cncli-*.db")
+	if err != nil {
+		return cardano.ClientLeaderLogsResponse{}, fmt.Errorf("unable to create temp db for cncli: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	tmpFile.Close()
+	defer os.Remove(tmpPath) //nolint:errcheck
+
+	tmpDB, err := sql.Open("sqlite3", tmpPath)
+	if err != nil {
+		return cardano.ClientLeaderLogsResponse{}, fmt.Errorf("unable to initialize temp db for cncli: %w", err)
+	}
+	if _, err := tmpDB.ExecContext(ctx, "PRAGMA user_version = 1"); err != nil {
+		tmpDB.Close()
+		return cardano.ClientLeaderLogsResponse{}, fmt.Errorf("unable to initialize temp db for cncli: %w", err)
+	}
+	tmpDB.Close()
 
 	args := []string{
 		"leaderlog",
@@ -140,7 +160,7 @@ func (c *Client) LeaderLogs(ctx context.Context, ledgetSet string, epochNonce st
 		"--shelley-genesis",
 		shelleyGenesisfile,
 		"--ledger-set",
-		ledgetSet,
+		ledgerSet,
 		"--nonce",
 		epochNonce,
 		"--pool-id",
@@ -150,20 +170,20 @@ func (c *Client) LeaderLogs(ctx context.Context, ledgetSet string, epochNonce st
 		"--tz",
 		c.opts.Timezone,
 		"--db",
-		c.opts.DBPath,
+		tmpPath,
 	}
 
 	poolInfo, err := c.blockfrost.GetPoolInfo(ctx, pool.ID)
 	if err != nil {
-		return fmt.Errorf("unable to fetch pool info for %s: %w", pool.ID, err)
+		return cardano.ClientLeaderLogsResponse{}, fmt.Errorf("unable to fetch pool info for %s: %w", pool.ID, err)
 	}
 
 	poolstakeSnapshot, err := c.StakeSnapshot(ctx, poolInfo.PoolID)
 	if err != nil {
-		return err
+		return cardano.ClientLeaderLogsResponse{}, err
 	}
 
-	switch ledgetSet {
+	switch ledgerSet {
 	case "prev":
 		args = append(args, "--pool-stake", strconv.Itoa(poolstakeSnapshot.Pools[poolInfo.Hex].StakeGo))
 		args = append(args, "--active-stake", strconv.Itoa(poolstakeSnapshot.Total.StakeGo))
@@ -186,19 +206,17 @@ func (c *Client) LeaderLogs(ctx context.Context, ledgetSet string, epochNonce st
 			slog.String("pool_id", pool.ID),
 		)
 		fmt.Fprint(os.Stdout, string(output))
-		return fmt.Errorf("cncli leaderlog: %w", err)
+		return cardano.ClientLeaderLogsResponse{}, fmt.Errorf("cncli leaderlog: %w", err)
 	}
 
 	response := cardano.ClientLeaderLogsResponse{}
 	if err := json.Unmarshal(output, &response); err != nil {
-		return fmt.Errorf("unable to unmarshal response for leaderlog command: %w", err)
+		return cardano.ClientLeaderLogsResponse{}, fmt.Errorf("unable to unmarshal response for leaderlog command: %w", err)
 	}
 
-	// catch errors from the cncli command when it returns an exit status of 0
-	// despite encountering an issue.
 	if response.Status == "error" {
-		return fmt.Errorf("cncli leaderlog: %s", response.ErrorMessage)
+		return cardano.ClientLeaderLogsResponse{}, fmt.Errorf("cncli leaderlog: %s", response.ErrorMessage)
 	}
 
-	return nil
+	return response, nil
 }
