@@ -947,7 +947,7 @@ cardano_validator_watcher_validated_blocks_total{epoch="101",pool_id="pool-0",po
 			).
 			Return(blockfrost.Epoch{Epoch: nextEpoch}, nil)
 
-		clients.sl.EXPECT().Refresh(
+		clients.sl.EXPECT().RefreshCurrent(
 			mock.Anything,
 			blockfrost.Epoch{Epoch: nextEpoch},
 		).Return(nil)

@@ -259,12 +259,12 @@ func (_c *MockSlotLeader_IsSlotsEmpty_Call) RunAndReturn(run func(context.Contex
 	return _c
 }
 
-// Refresh provides a mock function with given fields: ctx, epoch
-func (_m *MockSlotLeader) Refresh(ctx context.Context, epoch blockfrost.Epoch) error {
+// RefreshCurrent provides a mock function with given fields: ctx, epoch
+func (_m *MockSlotLeader) RefreshCurrent(ctx context.Context, epoch blockfrost.Epoch) error {
 	ret := _m.Called(ctx, epoch)
 
 	if len(ret) == 0 {
-		panic("no return value specified for Refresh")
+		panic("no return value specified for RefreshCurrent")
 	}
 
 	var r0 error
@@ -277,31 +277,31 @@ func (_m *MockSlotLeader) Refresh(ctx context.Context, epoch blockfrost.Epoch) e
 	return r0
 }
 
-// MockSlotLeader_Refresh_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Refresh'
-type MockSlotLeader_Refresh_Call struct {
+// MockSlotLeader_RefreshCurrent_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RefreshCurrent'
+type MockSlotLeader_RefreshCurrent_Call struct {
 	*mock.Call
 }
 
-// Refresh is a helper method to define mock.On call
+// RefreshCurrent is a helper method to define mock.On call
 //   - ctx context.Context
 //   - epoch blockfrost.Epoch
-func (_e *MockSlotLeader_Expecter) Refresh(ctx interface{}, epoch interface{}) *MockSlotLeader_Refresh_Call {
-	return &MockSlotLeader_Refresh_Call{Call: _e.mock.On("Refresh", ctx, epoch)}
+func (_e *MockSlotLeader_Expecter) RefreshCurrent(ctx interface{}, epoch interface{}) *MockSlotLeader_RefreshCurrent_Call {
+	return &MockSlotLeader_RefreshCurrent_Call{Call: _e.mock.On("RefreshCurrent", ctx, epoch)}
 }
 
-func (_c *MockSlotLeader_Refresh_Call) Run(run func(ctx context.Context, epoch blockfrost.Epoch)) *MockSlotLeader_Refresh_Call {
+func (_c *MockSlotLeader_RefreshCurrent_Call) Run(run func(ctx context.Context, epoch blockfrost.Epoch)) *MockSlotLeader_RefreshCurrent_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(context.Context), args[1].(blockfrost.Epoch))
 	})
 	return _c
 }
 
-func (_c *MockSlotLeader_Refresh_Call) Return(_a0 error) *MockSlotLeader_Refresh_Call {
+func (_c *MockSlotLeader_RefreshCurrent_Call) Return(_a0 error) *MockSlotLeader_RefreshCurrent_Call {
 	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *MockSlotLeader_Refresh_Call) RunAndReturn(run func(context.Context, blockfrost.Epoch) error) *MockSlotLeader_Refresh_Call {
+func (_c *MockSlotLeader_RefreshCurrent_Call) RunAndReturn(run func(context.Context, blockfrost.Epoch) error) *MockSlotLeader_RefreshCurrent_Call {
 	_c.Call.Return(run)
 	return _c
 }

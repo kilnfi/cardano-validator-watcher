@@ -13,6 +13,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+
+	"github.com/kilnfi/cardano-validator-watcher/internal/cardano"
 )
 
 func TestRefresh(t *testing.T) {
@@ -41,6 +43,7 @@ func TestRefresh(t *testing.T) {
 			clients.cardano,
 			clients.bf, pools,
 			registry.metrics,
+			0,
 		)
 
 		// setup mocks
@@ -60,7 +63,20 @@ func TestRefresh(t *testing.T) {
 				sqlmock.NewRows([]string{"id", "epoch", "pool_id", "slot_qty", "slots", "hash"}),
 			)
 
-		clients.cardano.EXPECT().LeaderLogs(mock.Anything, "current", "nonce", pools[0]).Return(nil)
+		clients.cardano.EXPECT().LeaderLogs(mock.Anything, "current", "nonce", pools[0]).Return(
+			cardano.ClientLeaderLogsResponse{
+				Status: "ok",
+				AssignedSlots: []cardano.SlotSchedule{
+					{Slot: 1000},
+					{Slot: 2000},
+				},
+			},
+			nil,
+		)
+
+		db.mock.ExpectExec("INSERT INTO slots (epoch, pool_id, slot_qty, slots, hash) VALUES (?, ?, ?, ?, ?)").
+			WithArgs(epoch, pools[0].ID, 2, "[1000,2000]", "").
+			WillReturnResult(sqlmock.NewResult(1, 1))
 
 		db.mock.ExpectQuery("SELECT * FROM slots WHERE pool_id = ? AND epoch = ?").
 			WithArgs(pools[0].ID, epoch).
@@ -75,7 +91,7 @@ func TestRefresh(t *testing.T) {
 				),
 			)
 
-		err := slotLeaderService.Refresh(context.Background(), blockfrost.Epoch{Epoch: epoch})
+		err := slotLeaderService.RefreshCurrent(context.Background(), blockfrost.Epoch{Epoch: epoch})
 		require.NoError(t, err)
 
 		b := bytes.NewBufferString(registry.metricsExpectedOutput)
@@ -106,6 +122,7 @@ func TestRefresh(t *testing.T) {
 			clients.cardano,
 			clients.bf, pools,
 			registry.metrics,
+			0,
 		)
 
 		// setup mocks
@@ -145,7 +162,7 @@ func TestRefresh(t *testing.T) {
 				),
 			)
 
-		err := slotLeaderService.Refresh(context.Background(), blockfrost.Epoch{Epoch: epoch})
+		err := slotLeaderService.RefreshCurrent(context.Background(), blockfrost.Epoch{Epoch: epoch})
 		require.NoError(t, err)
 
 		b := bytes.NewBufferString(registry.metricsExpectedOutput)
@@ -172,6 +189,7 @@ func TestRefresh(t *testing.T) {
 			clients.cardano,
 			clients.bf, pools,
 			registry.metrics,
+			0,
 		)
 
 		// setup mocks
@@ -188,7 +206,7 @@ func TestRefresh(t *testing.T) {
 		db.mock.ExpectQuery("SELECT * FROM slots WHERE pool_id = ? AND epoch = ?").
 			WithArgs(pools[0].ID, epoch).WillReturnError(errors.New("timeout"))
 
-		err := slotLeaderService.Refresh(context.Background(), blockfrost.Epoch{Epoch: epoch})
+		err := slotLeaderService.RefreshCurrent(context.Background(), blockfrost.Epoch{Epoch: epoch})
 		require.ErrorContains(t, err, "unable to check if slots are already refreshed for pool")
 
 		b := bytes.NewBufferString(registry.metricsExpectedOutput)
@@ -215,6 +233,7 @@ func TestRefresh(t *testing.T) {
 			clients.cardano,
 			clients.bf, pools,
 			registry.metrics,
+			0,
 		)
 
 		// setup mocks
@@ -245,7 +264,7 @@ func TestRefresh(t *testing.T) {
 			WithArgs(pools[0].ID, epoch).
 			WillReturnError(errors.New("timeout"))
 
-		err := slotLeaderService.Refresh(context.Background(), blockfrost.Epoch{Epoch: epoch})
+		err := slotLeaderService.RefreshCurrent(context.Background(), blockfrost.Epoch{Epoch: epoch})
 		require.ErrorContains(t, err, "unable to get slot leaders for pool")
 
 		b := bytes.NewBufferString(registry.metricsExpectedOutput)
@@ -272,6 +291,7 @@ func TestRefresh(t *testing.T) {
 			clients.cardano,
 			clients.bf, pools,
 			registry.metrics,
+			0,
 		)
 
 		// setup mocks
@@ -282,7 +302,7 @@ func TestRefresh(t *testing.T) {
 				errors.New("timeout"),
 			)
 
-		err := slotLeaderService.Refresh(context.Background(), blockfrost.Epoch{Epoch: epoch})
+		err := slotLeaderService.RefreshCurrent(context.Background(), blockfrost.Epoch{Epoch: epoch})
 		require.ErrorContains(t, err, "unable to get epoch parameters")
 
 		b := bytes.NewBufferString(registry.metricsExpectedOutput)
@@ -309,6 +329,7 @@ func TestRefresh(t *testing.T) {
 			clients.cardano,
 			clients.bf, pools,
 			registry.metrics,
+			0,
 		)
 
 		// setup mocks
@@ -328,9 +349,9 @@ func TestRefresh(t *testing.T) {
 				sqlmock.NewRows([]string{"id", "epoch", "pool_id", "slot_qty", "slots", "hash"}),
 			)
 
-		clients.cardano.EXPECT().LeaderLogs(mock.Anything, "current", "nonce", pools[0]).Return(errors.New("cardano timeout"))
+		clients.cardano.EXPECT().LeaderLogs(mock.Anything, "current", "nonce", pools[0]).Return(cardano.ClientLeaderLogsResponse{}, errors.New("cardano timeout"))
 
-		err := slotLeaderService.Refresh(context.Background(), blockfrost.Epoch{Epoch: epoch})
+		err := slotLeaderService.RefreshCurrent(context.Background(), blockfrost.Epoch{Epoch: epoch})
 		require.ErrorContains(t, err, "unable to refresh slot leaders for pool")
 
 		b := bytes.NewBufferString(registry.metricsExpectedOutput)
@@ -357,6 +378,7 @@ func TestGetNextSlotLeader(t *testing.T) {
 			clients.cardano,
 			clients.bf, pools,
 			registry.metrics,
+			0,
 		)
 
 		// setup mocks
@@ -393,6 +415,7 @@ func TestGetNextSlotLeader(t *testing.T) {
 			clients.cardano,
 			clients.bf, pools,
 			registry.metrics,
+			0,
 		)
 
 		// setup mocks
@@ -420,6 +443,7 @@ func TestGetNextSlotLeader(t *testing.T) {
 			clients.cardano,
 			clients.bf, pools,
 			registry.metrics,
+			0,
 		)
 
 		// setup mocks
@@ -449,6 +473,7 @@ func TestGetNextSlotLeader(t *testing.T) {
 			clients.cardano,
 			clients.bf, pools,
 			registry.metrics,
+			0,
 		)
 
 		// setup mocks
@@ -488,6 +513,7 @@ func TestIsRefresh(t *testing.T) {
 			clients.cardano,
 			clients.bf, pools,
 			registry.metrics,
+			0,
 		)
 
 		// setup mocks
@@ -522,6 +548,7 @@ func TestIsRefresh(t *testing.T) {
 			clients.cardano,
 			clients.bf, pools,
 			registry.metrics,
+			0,
 		)
 
 		// setup mocks
@@ -553,6 +580,7 @@ func TestIsSlotLeader(t *testing.T) {
 			clients.cardano,
 			clients.bf, pools,
 			registry.metrics,
+			0,
 		)
 
 		// setup mocks
@@ -583,6 +611,7 @@ func TestIsSlotLeader(t *testing.T) {
 			clients.cardano,
 			clients.bf, pools,
 			registry.metrics,
+			0,
 		)
 
 		// setup mocks
@@ -613,6 +642,7 @@ func TestIsSlotLeader(t *testing.T) {
 			clients.cardano,
 			clients.bf, pools,
 			registry.metrics,
+			0,
 		)
 
 		// setup mocks
@@ -640,6 +670,7 @@ func TestIsSlotLeader(t *testing.T) {
 			clients.cardano,
 			clients.bf, pools,
 			registry.metrics,
+			0,
 		)
 
 		// setup mocks
@@ -668,6 +699,7 @@ func TestIsSlotEmpty(t *testing.T) {
 			clients.cardano,
 			clients.bf, pools,
 			registry.metrics,
+			0,
 		)
 
 		// setup mocks
@@ -698,6 +730,7 @@ func TestIsSlotEmpty(t *testing.T) {
 			clients.cardano,
 			clients.bf, pools,
 			registry.metrics,
+			0,
 		)
 
 		// setup mocks
@@ -728,6 +761,7 @@ func TestIsSlotEmpty(t *testing.T) {
 			clients.cardano,
 			clients.bf, pools,
 			registry.metrics,
+			0,
 		)
 
 		// setup mocks
