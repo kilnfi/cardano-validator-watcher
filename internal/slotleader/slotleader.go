@@ -257,5 +257,8 @@ func (s *Service) persistSlots(ctx context.Context, poolID string, epoch int, re
 		`INSERT INTO slots (epoch, pool_id, slot_qty, slots, hash) VALUES (?, ?, ?, ?, ?)`,
 		epoch, poolID, len(assignedSlots), string(slotsJSON), "",
 	)
-	return err
+	if err != nil {
+		return fmt.Errorf("unable to persist slots for pool %s epoch %d: %w", poolID, epoch, err)
+	}
+	return nil
 }
