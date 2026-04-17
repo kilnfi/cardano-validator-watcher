@@ -198,7 +198,7 @@ func (c *Client) GetAccountInfo(ctx context.Context, address string) (bf.Account
 	}
 
 	req.Header.Set("Project_id", c.projectID)
-	resp, err := http.DefaultClient.Do(req) //nolint:gosec // G704: apiURL comes from config, not user input
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return account, fmt.Errorf("failed to send request to get account details: %w", err)
 	}

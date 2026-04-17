@@ -141,7 +141,7 @@ func (c *Client) LeaderLogs(ctx context.Context, ledgerSet string, epochNonce st
 	}
 	tmpPath := tmpFile.Name()
 	tmpFile.Close()
-	defer os.Remove(tmpPath) //nolint:errcheck
+	defer os.Remove(tmpPath)
 
 	tmpDB, err := sql.Open("sqlite3", tmpPath)
 	if err != nil {

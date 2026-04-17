@@ -151,7 +151,7 @@ func TestLeaderLogs(t *testing.T) {
 	vrf, _ := os.Create("pool-0.vrf.skey")
 	defer func() {
 		os.RemoveAll(clientopts.ConfigDir)
-		os.Remove(vrf.Name()) //nolint:gosec // G703: filename is hardcoded in test, not user-controlled
+		os.Remove(vrf.Name())
 	}()
 
 	bf.EXPECT().GetPoolInfo(ctx, "pool-0").Return(blockfrost.Pool{
