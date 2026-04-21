@@ -360,6 +360,104 @@ func TestRefresh(t *testing.T) {
 	})
 }
 
+func TestRefreshNext(t *testing.T) {
+	t.Parallel()
+
+	t.Run("GoodPath_RefreshNextEpoch", func(t *testing.T) {
+		t.Parallel()
+
+		clients := setupClients(t)
+		pools := setupPools(t)
+		db := setupDB(t)
+		registry := setupRegistry(t)
+		nextEpoch := 101
+
+		registry.metricsExpectedOutput = `
+		# HELP cardano_validator_watcher_expected_blocks number of expected blocks in the current epoch
+		# TYPE cardano_validator_watcher_expected_blocks gauge
+		cardano_validator_watcher_expected_blocks{epoch="101", pool_id="pool-0", pool_instance="pool-0", pool_name="pool-0"} 2
+		`
+		registry.metricsUnderTest = []string{
+			"cardano_validator_watcher_expected_blocks",
+		}
+
+		slotLeaderService := NewSlotLeaderService(
+			db.db,
+			clients.cardano,
+			clients.bf, pools,
+			registry.metrics,
+			0,
+		)
+
+		db.mock.ExpectQuery("SELECT * FROM slots WHERE pool_id = ? AND epoch = ?").
+			WithArgs(pools[0].ID, nextEpoch).
+			WillReturnRows(
+				sqlmock.NewRows([]string{"id", "epoch", "pool_id", "slot_qty", "slots", "hash"}),
+			)
+
+		clients.cardano.EXPECT().LeaderLogsNextEpoch(mock.Anything, pools[0]).Return(
+			cardano.ClientLeaderLogsResponse{
+				Status: "ok",
+				AssignedSlots: []cardano.SlotSchedule{
+					{Slot: 1000},
+					{Slot: 2000},
+				},
+			},
+			nil,
+		)
+
+		db.mock.ExpectExec("INSERT INTO slots (epoch, pool_id, slot_qty, slots, hash) VALUES (?, ?, ?, ?, ?)").
+			WithArgs(nextEpoch, pools[0].ID, 2, "[1000,2000]", "").
+			WillReturnResult(sqlmock.NewResult(1, 1))
+
+		db.mock.ExpectQuery("SELECT * FROM slots WHERE pool_id = ? AND epoch = ?").
+			WithArgs(pools[0].ID, nextEpoch).
+			WillReturnRows(
+				sqlmock.NewRows([]string{"id", "epoch", "pool_id", "slot_qty", "slots", "hash"}).AddRow(
+					1, nextEpoch, pools[0].ID, 2, "[1000, 2000]", "hash",
+				),
+			)
+
+		err := slotLeaderService.RefreshNext(context.Background(), blockfrost.Epoch{Epoch: nextEpoch}, 0)
+		require.NoError(t, err)
+
+		b := bytes.NewBufferString(registry.metricsExpectedOutput)
+		err = testutil.CollectAndCompare(registry.registry, b, registry.metricsUnderTest...)
+		require.NoError(t, err)
+	})
+
+	t.Run("SadPath_RefreshNext_UnableToCalculateLeaderLogs", func(t *testing.T) {
+		t.Parallel()
+
+		clients := setupClients(t)
+		pools := setupPools(t)
+		db := setupDB(t)
+		registry := setupRegistry(t)
+		nextEpoch := 101
+
+		slotLeaderService := NewSlotLeaderService(
+			db.db,
+			clients.cardano,
+			clients.bf, pools,
+			registry.metrics,
+			0,
+		)
+
+		db.mock.ExpectQuery("SELECT * FROM slots WHERE pool_id = ? AND epoch = ?").
+			WithArgs(pools[0].ID, nextEpoch).
+			WillReturnRows(
+				sqlmock.NewRows([]string{"id", "epoch", "pool_id", "slot_qty", "slots", "hash"}),
+			)
+
+		clients.cardano.EXPECT().LeaderLogsNextEpoch(mock.Anything, pools[0]).Return(
+			cardano.ClientLeaderLogsResponse{}, errors.New("cardano-cli timeout"),
+		)
+
+		err := slotLeaderService.RefreshNext(context.Background(), blockfrost.Epoch{Epoch: nextEpoch}, 0)
+		require.ErrorContains(t, err, "unable to refresh slot leaders for pool")
+	})
+}
+
 func TestGetNextSlotLeader(t *testing.T) {
 	t.Parallel()
 

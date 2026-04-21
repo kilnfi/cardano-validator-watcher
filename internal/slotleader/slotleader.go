@@ -73,9 +73,13 @@ func (s *Service) refresh(ctx context.Context, epoch bfAPI.Epoch, ledgerSet stri
 		)
 	}
 
-	epochParams, err := s.blockfrost.GetEpochParameters(ctx, epoch.Epoch)
-	if err != nil {
-		return fmt.Errorf("slotLeader: unable to get epoch parameters: %w", err)
+	var epochNonce string
+	if ledgerSet != "next" {
+		epochParams, err := s.blockfrost.GetEpochParameters(ctx, epoch.Epoch)
+		if err != nil {
+			return fmt.Errorf("slotLeader: unable to get epoch parameters: %w", err)
+		}
+		epochNonce = epochParams.Nonce
 	}
 
 	for _, pool := range activePools {
@@ -91,7 +95,12 @@ func (s *Service) refresh(ctx context.Context, epoch bfAPI.Epoch, ledgerSet stri
 						fmt.Sprintf("⏰ refreshing slots for pool: %s", pool.Name),
 						slog.String("pool_id", pool.ID),
 					)
-					response, err := s.cardano.LeaderLogs(ctx, ledgerSet, epochParams.Nonce, pool)
+					var response cardano.ClientLeaderLogsResponse
+					if ledgerSet == "next" {
+						response, err = s.cardano.LeaderLogsNextEpoch(ctx, pool)
+					} else {
+						response, err = s.cardano.LeaderLogs(ctx, ledgerSet, epochNonce, pool)
+					}
 					if err != nil {
 						return &ErrSlotLeaderRefresh{PoolID: pool.ID, Epoch: epoch.Epoch, Message: err.Error()}
 					}

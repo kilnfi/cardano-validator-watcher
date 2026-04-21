@@ -241,3 +241,60 @@ func TestLeaderLogs(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, expectedOutput, response)
 }
+
+func TestLeaderLogsNextEpoch(t *testing.T) {
+	pool := pools.Pool{
+		Instance: "pool-0",
+		ID:       "pool-0",
+		Name:     "pool-0",
+		Key:      "pool-0.vrf.skey",
+	}
+	clientopts := ClientOptions{
+		Network:    "preprod",
+		SocketPath: "/tmp/cardano.socket",
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	dir, err := os.MkdirTemp("", "")
+	require.NoError(t, err)
+	clientopts.ConfigDir = dir
+	_, _ = os.Create(filepath.Join(clientopts.ConfigDir, "shelley.json"))
+	vrf, _ := os.Create("pool-0.vrf.skey")
+	defer func() {
+		os.RemoveAll(clientopts.ConfigDir)
+		os.Remove(vrf.Name())
+	}()
+
+	cardanoCLIOutput := `[{"slotNumber":185071693,"slotTime":"2026-04-19T22:33:04Z"},{"slotNumber":185072489,"slotTime":"2026-04-19T22:46:20Z"}]`
+
+	exec := &mocks.MockCommandExecutor{}
+	exec.EXPECT().ExecCommand(
+		ctx,
+		leaderLogsTimeout,
+		([]string)(nil),
+		"cardano-cli",
+		"conway", "query", "leadership-schedule",
+		"--genesis", filepath.Join(clientopts.ConfigDir, "shelley.json"),
+		"--stake-pool-id", pool.ID,
+		"--vrf-signing-key-file", vrf.Name(),
+		"--next",
+		"--socket-path", clientopts.SocketPath,
+		"--testnet-magic", "1",
+	).Return([]byte(cardanoCLIOutput), nil)
+
+	expectedAt0, _ := time.Parse(time.RFC3339, "2026-04-19T22:33:04Z")
+	expectedAt1, _ := time.Parse(time.RFC3339, "2026-04-19T22:46:20Z")
+	expected := cardano.ClientLeaderLogsResponse{
+		Status: "ok",
+		AssignedSlots: []cardano.SlotSchedule{
+			{No: 1, Slot: 185071693, At: expectedAt0},
+			{No: 2, Slot: 185072489, At: expectedAt1},
+		},
+	}
+
+	client := NewClient(clientopts, nil, exec)
+	response, err := client.LeaderLogsNextEpoch(ctx, pool)
+	require.NoError(t, err)
+	require.Equal(t, expected, response)
+}

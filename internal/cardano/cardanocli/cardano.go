@@ -42,6 +42,20 @@ type ClientOptions struct {
 	Timezone   string
 }
 
+func (c *Client) appendNetworkArgs(args []string) []string {
+	switch c.opts.Network {
+	case "mainnet":
+		return append(args, "--mainnet")
+	case "preprod":
+		return append(args, "--testnet-magic", "1")
+	case "sanchonet":
+		return append(args, "--testnet-magic", "4")
+	case "preview":
+		return append(args, "--testnet-magic", "2")
+	}
+	return args
+}
+
 func NewClient(opts ClientOptions, blockfrost blockfrost.Client, executor CommandExecutor) *Client {
 	logger := slog.With(
 		slog.String("component", "cardano-client"),
@@ -60,16 +74,7 @@ func (c *Client) Ping(ctx context.Context) error {
 		"--socket-path", c.opts.SocketPath,
 	}
 
-	switch c.opts.Network {
-	case "mainnet":
-		args = append(args, "--mainnet")
-	case "preprod":
-		args = append(args, "--testnet-magic", "1")
-	case "sanchonet":
-		args = append(args, "--testnet-magic", "4")
-	case "preview":
-		args = append(args, "--testnet-magic", "2")
-	}
+	args = c.appendNetworkArgs(args)
 
 	c.logger.DebugContext(ctx, "querying cardano node tip",
 		slog.String("cmd", fmt.Sprintf("cardano-cli %s", strings.Join(args, " "))),
@@ -95,16 +100,7 @@ func (c *Client) StakeSnapshot(ctx context.Context, PoolID string) (cardano.Clie
 		c.opts.SocketPath,
 	}
 
-	switch c.opts.Network {
-	case "mainnet":
-		args = append(args, "--mainnet")
-	case "preprod":
-		args = append(args, "--testnet-magic", "1")
-	case "sanchonet":
-		args = append(args, "--testnet-magic", "4")
-	case "preview":
-		args = append(args, "--testnet-magic", "2")
-	}
+	args = c.appendNetworkArgs(args)
 
 	output, err := c.executor.ExecCommand(ctx, stakeSnapshotTimeout, nil, "cardano-cli", args...)
 	if err != nil {
@@ -118,6 +114,66 @@ func (c *Client) StakeSnapshot(ctx context.Context, PoolID string) (cardano.Clie
 	}
 
 	return response, nil
+}
+
+func (c *Client) LeaderLogsNextEpoch(ctx context.Context, pool pools.Pool) (cardano.ClientLeaderLogsResponse, error) {
+	shelleyGenesisfile := filepath.Join(c.opts.ConfigDir, "shelley.json")
+	if _, err := os.Stat(shelleyGenesisfile); errors.Is(err, os.ErrNotExist) {
+		return cardano.ClientLeaderLogsResponse{}, fmt.Errorf("unable to find shelley genesis file: %w", err)
+	}
+
+	if _, err := os.Stat(pool.Key); errors.Is(err, os.ErrNotExist) {
+		return cardano.ClientLeaderLogsResponse{}, fmt.Errorf("unable to find pool vrf skey file: %w", err)
+	}
+
+	args := []string{
+		"conway", "query", "leadership-schedule",
+		"--genesis", shelleyGenesisfile,
+		"--stake-pool-id", pool.ID,
+		"--vrf-signing-key-file", pool.Key,
+		"--next",
+		"--socket-path", c.opts.SocketPath,
+	}
+
+	args = c.appendNetworkArgs(args)
+
+	output, err := c.executor.ExecCommand(ctx, leaderLogsTimeout, nil, "cardano-cli", args...)
+	if err != nil {
+		c.logger.ErrorContext(ctx,
+			fmt.Sprintf("unable to execute cardano-cli leadership-schedule command: %v", err),
+			slog.String("pool_name", pool.Name),
+			slog.String("pool_id", pool.ID),
+		)
+		fmt.Fprint(os.Stdout, string(output))
+		return cardano.ClientLeaderLogsResponse{}, fmt.Errorf("cardano-cli leadership-schedule: %w", err)
+	}
+
+	type entry struct {
+		SlotNumber int    `json:"slotNumber"`
+		SlotTime   string `json:"slotTime"`
+	}
+	var entries []entry
+	if err := json.Unmarshal(output, &entries); err != nil {
+		return cardano.ClientLeaderLogsResponse{}, fmt.Errorf("unable to unmarshal leadership-schedule response: %w", err)
+	}
+
+	slots := make([]cardano.SlotSchedule, len(entries))
+	for i, e := range entries {
+		t, err := time.Parse(time.RFC3339, e.SlotTime)
+		if err != nil {
+			return cardano.ClientLeaderLogsResponse{}, fmt.Errorf("unable to parse slot time %q: %w", e.SlotTime, err)
+		}
+		slots[i] = cardano.SlotSchedule{
+			No:   i + 1,
+			Slot: e.SlotNumber,
+			At:   t,
+		}
+	}
+
+	return cardano.ClientLeaderLogsResponse{
+		Status:        "ok",
+		AssignedSlots: slots,
+	}, nil
 }
 
 func (c *Client) LeaderLogs(ctx context.Context, ledgerSet string, epochNonce string, pool pools.Pool) (cardano.ClientLeaderLogsResponse, error) {
