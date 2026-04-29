@@ -20,6 +20,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestDeriveNextEpochNonce(t *testing.T) {
+	// Values validated manually against cardano-cli leadership-schedule --next output
+	candidateNonce := "fe29a9a0a3161eebcdab7d210bed35c20636cf759054d705a3620d4ed09b8183"
+	lastEpochBlockNonce := "bac3ded0ddd204f324618ac32a6938b5a398318b2da37d7b9679cf96648c053d"
+	expectedNonce := "47c2b7ae9e783b753afe7fd28986ac1b39c37220e13b5df09245cd4c1125f759"
+
+	nonce, err := deriveNextEpochNonce(candidateNonce, lastEpochBlockNonce)
+	require.NoError(t, err)
+	require.Equal(t, expectedNonce, nonce)
+}
+
 func TestPing(t *testing.T) {
 	t.Run("GoodPath", func(t *testing.T) {
 		clientopts := ClientOptions{
@@ -154,7 +165,7 @@ func TestLeaderLogs(t *testing.T) {
 		os.Remove(vrf.Name())
 	}()
 
-	bf.EXPECT().GetPoolInfo(ctx, "pool-0").Return(blockfrost.Pool{
+	bf.EXPECT().GetPoolInfo(mock.Anything, "pool-0").Return(blockfrost.Pool{
 		PoolID: "pool-0",
 		Hex:    "pool-0-hex",
 	}, nil)
@@ -178,7 +189,7 @@ func TestLeaderLogs(t *testing.T) {
 
 	exec := &mocks.MockCommandExecutor{}
 	exec.EXPECT().ExecCommand(
-		ctx,
+		mock.Anything,
 		stakeSnapshotTimeout,
 		mock.Anything,
 		"cardano-cli",
@@ -209,7 +220,7 @@ func TestLeaderLogs(t *testing.T) {
 	expectedOutputByte, err := json.Marshal(expectedOutput)
 	require.NoError(t, err)
 	exec.EXPECT().ExecCommand(
-		ctx,
+		mock.Anything,
 		leaderLogsTimeout,
 		mock.Anything,
 		"cncli",
@@ -252,13 +263,16 @@ func TestLeaderLogsNextEpoch(t *testing.T) {
 	clientopts := ClientOptions{
 		Network:    "preprod",
 		SocketPath: "/tmp/cardano.socket",
+		Timezone:   "UTC",
 	}
+	bf := blockfrostmocks.NewMockClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	dir, err := os.MkdirTemp("", "")
 	require.NoError(t, err)
 	clientopts.ConfigDir = dir
+	_, _ = os.Create(filepath.Join(clientopts.ConfigDir, "byron.json"))
 	_, _ = os.Create(filepath.Join(clientopts.ConfigDir, "shelley.json"))
 	vrf, _ := os.Create("pool-0.vrf.skey")
 	defer func() {
@@ -266,35 +280,87 @@ func TestLeaderLogsNextEpoch(t *testing.T) {
 		os.Remove(vrf.Name())
 	}()
 
-	cardanoCLIOutput := `[{"slotNumber":185071693,"slotTime":"2026-04-19T22:33:04Z"},{"slotNumber":185072489,"slotTime":"2026-04-19T22:46:20Z"}]`
+	const (
+		candidateNonce      = "aabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccdd"
+		lastEpochBlockNonce = "1122334411223344112233441122334411223344112233441122334411223344"
+		derivedNonce        = "921e343a85e3030b0e986605f80cc7ff82e90f1051861d14215d3b4d22928c10"
+	)
+
+	protocolStateOutput, err := json.Marshal(cardano.ClientProtocolStateResponse{
+		CandidateNonce:      candidateNonce,
+		LastEpochBlockNonce: lastEpochBlockNonce,
+	})
+	require.NoError(t, err)
+
+	stakeSnapshot := cardano.ClientQueryStakeSnapshotResponse{
+		Pools: map[string]cardano.PoolStakeInfo{
+			"pool-0-hex": {StakeMark: 100},
+		},
+		Total: cardano.TotalStakeInfo{StakeMark: 200},
+	}
+	stakeSnapshotOutput, err := json.Marshal(stakeSnapshot)
+	require.NoError(t, err)
+
+	expectedOutput := cardano.ClientLeaderLogsResponse{
+		Status:     "ok",
+		Epoch:      628,
+		EpochNonce: derivedNonce,
+		EpochSlots: 2,
+		AssignedSlots: []cardano.SlotSchedule{
+			{No: 1, Slot: 185071693, SlotInEpoch: 1},
+			{No: 2, Slot: 185072489, SlotInEpoch: 2},
+		},
+	}
+	expectedOutputByte, err := json.Marshal(expectedOutput)
+	require.NoError(t, err)
 
 	exec := &mocks.MockCommandExecutor{}
 	exec.EXPECT().ExecCommand(
-		ctx,
-		leaderLogsTimeout,
-		([]string)(nil),
+		mock.Anything,
+		stakeSnapshotTimeout,
+		mock.Anything,
 		"cardano-cli",
-		"conway", "query", "leadership-schedule",
-		"--genesis", filepath.Join(clientopts.ConfigDir, "shelley.json"),
-		"--stake-pool-id", pool.ID,
-		"--vrf-signing-key-file", vrf.Name(),
-		"--next",
+		"query", "protocol-state",
 		"--socket-path", clientopts.SocketPath,
 		"--testnet-magic", "1",
-	).Return([]byte(cardanoCLIOutput), nil)
+	).Return(protocolStateOutput, nil)
 
-	expectedAt0, _ := time.Parse(time.RFC3339, "2026-04-19T22:33:04Z")
-	expectedAt1, _ := time.Parse(time.RFC3339, "2026-04-19T22:46:20Z")
-	expected := cardano.ClientLeaderLogsResponse{
-		Status: "ok",
-		AssignedSlots: []cardano.SlotSchedule{
-			{No: 1, Slot: 185071693, At: expectedAt0},
-			{No: 2, Slot: 185072489, At: expectedAt1},
-		},
-	}
+	bf.EXPECT().GetPoolInfo(mock.Anything, "pool-0").Return(blockfrost.Pool{
+		PoolID: "pool-0",
+		Hex:    "pool-0-hex",
+	}, nil)
 
-	client := NewClient(clientopts, nil, exec)
+	exec.EXPECT().ExecCommand(
+		mock.Anything,
+		stakeSnapshotTimeout,
+		mock.Anything,
+		"cardano-cli",
+		"query", "stake-snapshot",
+		"--stake-pool-id", "pool-0",
+		"--socket-path", clientopts.SocketPath,
+		"--testnet-magic", "1",
+	).Return(stakeSnapshotOutput, nil)
+
+	exec.EXPECT().ExecCommand(
+		mock.Anything,
+		leaderLogsTimeout,
+		mock.Anything,
+		"cncli",
+		"leaderlog",
+		"--byron-genesis", filepath.Join(clientopts.ConfigDir, "byron.json"),
+		"--shelley-genesis", filepath.Join(clientopts.ConfigDir, "shelley.json"),
+		"--ledger-set", "next",
+		"--nonce", derivedNonce,
+		"--pool-id", pool.ID,
+		"--pool-vrf-skey", vrf.Name(),
+		"--tz", clientopts.Timezone,
+		"--db", mock.AnythingOfType("string"),
+		"--pool-stake", strconv.Itoa(stakeSnapshot.Pools["pool-0-hex"].StakeMark),
+		"--active-stake", strconv.Itoa(stakeSnapshot.Total.StakeMark),
+	).Return(expectedOutputByte, nil)
+
+	client := NewClient(clientopts, bf, exec)
 	response, err := client.LeaderLogsNextEpoch(ctx, pool)
 	require.NoError(t, err)
-	require.Equal(t, expected, response)
+	require.Equal(t, expectedOutput, response)
 }

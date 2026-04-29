@@ -41,3 +41,8 @@ type TotalStakeInfo struct {
 	StakeMark int `json:"stakeMark,omitempty"`
 	StakeSet  int `json:"stakeSet,omitempty"`
 }
+
+type ClientProtocolStateResponse struct {
+	CandidateNonce      string `json:"candidateNonce"`
+	LastEpochBlockNonce string `json:"lastEpochBlockNonce"`
+}

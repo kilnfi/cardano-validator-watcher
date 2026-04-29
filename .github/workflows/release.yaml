@@ -216,9 +216,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker buildx imagetools create \
-            -t "${REGISTRY_IMAGE}:latest" \
-            -t "${REGISTRY_IMAGE}:${{ github.ref_name }}" \
+          TAGS="-t ${REGISTRY_IMAGE}:${{ github.ref_name }}"
+          if [[ "${{ github.ref_name }}" != *"-rc"* ]]; then
+            TAGS="${TAGS} -t ${REGISTRY_IMAGE}:latest"
+          fi
+          docker buildx imagetools create ${TAGS} \
             $(printf "${REGISTRY_IMAGE}:${{ github.ref_name }}-%s " amd64 arm64)
         env:
           REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
