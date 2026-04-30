@@ -3,6 +3,7 @@ package cardanocli
 import (
 	"context"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/crypto/blake2b"
 
 	_ "github.com/mattn/go-sqlite3"
 
@@ -117,66 +120,80 @@ func (c *Client) StakeSnapshot(ctx context.Context, PoolID string) (cardano.Clie
 }
 
 func (c *Client) LeaderLogsNextEpoch(ctx context.Context, pool pools.Pool) (cardano.ClientLeaderLogsResponse, error) {
-	shelleyGenesisfile := filepath.Join(c.opts.ConfigDir, "shelley.json")
-	if _, err := os.Stat(shelleyGenesisfile); errors.Is(err, os.ErrNotExist) {
-		return cardano.ClientLeaderLogsResponse{}, fmt.Errorf("unable to find shelley genesis file: %w", err)
+	start := time.Now()
+	ctx = context.WithValue(ctx, poolNameCtxKey, pool.Name)
+
+	protocolState, err := c.getProtocolState(ctx)
+	if err != nil {
+		return cardano.ClientLeaderLogsResponse{}, fmt.Errorf("unable to get protocol state: %w", err)
 	}
 
-	if _, err := os.Stat(pool.Key); errors.Is(err, os.ErrNotExist) {
-		return cardano.ClientLeaderLogsResponse{}, fmt.Errorf("unable to find pool vrf skey file: %w", err)
+	nextEpochNonce, err := deriveNextEpochNonce(protocolState.CandidateNonce, protocolState.LastEpochBlockNonce)
+	if err != nil {
+		return cardano.ClientLeaderLogsResponse{}, fmt.Errorf("unable to derive next epoch nonce: %w", err)
 	}
 
+	c.logger.DebugContext(ctx, "derived next epoch nonce",
+		slog.String("candidate_nonce", protocolState.CandidateNonce),
+		slog.String("last_epoch_block_nonce", protocolState.LastEpochBlockNonce),
+		slog.String("next_epoch_nonce", nextEpochNonce),
+	)
+
+	resp, err := c.LeaderLogs(ctx, "next", nextEpochNonce, pool)
+	if err != nil {
+		return cardano.ClientLeaderLogsResponse{}, err
+	}
+
+	c.logger.InfoContext(ctx, "next epoch slot schedule computed",
+		slog.String("pool", pool.Name),
+		slog.String("duration", time.Since(start).Round(time.Second).String()),
+		slog.Int("assigned_slots", len(resp.AssignedSlots)),
+	)
+
+	return resp, nil
+}
+
+func (c *Client) getProtocolState(ctx context.Context) (cardano.ClientProtocolStateResponse, error) {
 	args := []string{
-		"conway", "query", "leadership-schedule",
-		"--genesis", shelleyGenesisfile,
-		"--stake-pool-id", pool.ID,
-		"--vrf-signing-key-file", pool.Key,
-		"--next",
+		"query", "protocol-state",
 		"--socket-path", c.opts.SocketPath,
 	}
-
 	args = c.appendNetworkArgs(args)
 
-	output, err := c.executor.ExecCommand(ctx, leaderLogsTimeout, nil, "cardano-cli", args...)
+	output, err := c.executor.ExecCommand(ctx, stakeSnapshotTimeout, nil, "cardano-cli", args...)
 	if err != nil {
-		c.logger.ErrorContext(ctx,
-			fmt.Sprintf("unable to execute cardano-cli leadership-schedule command: %v", err),
-			slog.String("pool_name", pool.Name),
-			slog.String("pool_id", pool.ID),
-		)
-		fmt.Fprint(os.Stdout, string(output))
-		return cardano.ClientLeaderLogsResponse{}, fmt.Errorf("cardano-cli leadership-schedule: %w", err)
+		return cardano.ClientProtocolStateResponse{}, fmt.Errorf("unable to query protocol state: %w", err)
 	}
 
-	type entry struct {
-		SlotNumber int    `json:"slotNumber"`
-		SlotTime   string `json:"slotTime"`
-	}
-	var entries []entry
-	if err := json.Unmarshal(output, &entries); err != nil {
-		return cardano.ClientLeaderLogsResponse{}, fmt.Errorf("unable to unmarshal leadership-schedule response: %w", err)
+	var response cardano.ClientProtocolStateResponse
+	if err := json.Unmarshal(output, &response); err != nil {
+		return cardano.ClientProtocolStateResponse{}, fmt.Errorf("unable to unmarshal protocol-state response: %w", err)
 	}
 
-	slots := make([]cardano.SlotSchedule, len(entries))
-	for i, e := range entries {
-		t, err := time.Parse(time.RFC3339, e.SlotTime)
-		if err != nil {
-			return cardano.ClientLeaderLogsResponse{}, fmt.Errorf("unable to parse slot time %q: %w", e.SlotTime, err)
-		}
-		slots[i] = cardano.SlotSchedule{
-			No:   i + 1,
-			Slot: e.SlotNumber,
-			At:   t,
-		}
+	return response, nil
+}
+
+func deriveNextEpochNonce(candidateNonce, lastEpochBlockNonce string) (string, error) {
+	candidate, err := hex.DecodeString(candidateNonce)
+	if err != nil {
+		return "", fmt.Errorf("unable to decode candidateNonce: %w", err)
 	}
 
-	return cardano.ClientLeaderLogsResponse{
-		Status:        "ok",
-		AssignedSlots: slots,
-	}, nil
+	lastBlock, err := hex.DecodeString(lastEpochBlockNonce)
+	if err != nil {
+		return "", fmt.Errorf("unable to decode lastEpochBlockNonce: %w", err)
+	}
+
+	hash := blake2b.Sum256(append(candidate, lastBlock...))
+	return hex.EncodeToString(hash[:]), nil
 }
 
 func (c *Client) LeaderLogs(ctx context.Context, ledgerSet string, epochNonce string, pool pools.Pool) (cardano.ClientLeaderLogsResponse, error) {
+	// Inject pool name for subprocess memory logs; may already be set by LeaderLogsNextEpoch
+	if _, ok := ctx.Value(poolNameCtxKey).(string); !ok {
+		ctx = context.WithValue(ctx, poolNameCtxKey, pool.Name)
+	}
+
 	byronGenesisfile := filepath.Join(c.opts.ConfigDir, "byron.json")
 	shelleyGenesisfile := filepath.Join(c.opts.ConfigDir, "shelley.json")
 	if _, err := os.Stat(byronGenesisfile); errors.Is(err, os.ErrNotExist) {

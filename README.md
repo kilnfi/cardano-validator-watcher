@@ -255,6 +255,25 @@ cardano:
   socat-port: 3002
 ```
 
+## Advanced
+
+### cncli CPU tuning
+
+`cncli` is built in Rust and uses [Rayon](https://github.com/rayon-rs/rayon) for internal parallelism. By default, Rayon spawns as many threads as there are logical CPUs. When monitoring many pools concurrently, each `cncli leaderlog` subprocess will try to use all available CPUs, causing heavy thread contention.
+
+If you run a large number of pools on a resource-constrained pod, you can limit Rayon's thread count by setting `RAYON_NUM_THREADS` in the watcher's environment:
+
+```yaml
+# Kubernetes pod spec
+env:
+  - name: RAYON_NUM_THREADS
+    value: "1"
+```
+
+> **When to use this:** if you monitor many pools in parallel (e.g. 10+) on a pod with few vCPUs (e.g. 4). Setting `RAYON_NUM_THREADS=1` eliminates internal thread contention without meaningful performance loss since the Go-level concurrency already saturates available CPUs.
+>
+> **When to leave it unset:** if you monitor a small number of pools or have many vCPUs available, letting Rayon use multiple threads will speed up each individual `cncli leaderlog` invocation.
+
 ## Metrics
 
 | Metric Name                                                       | Description          | Type | Labels |
