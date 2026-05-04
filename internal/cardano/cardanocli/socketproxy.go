@@ -76,16 +76,11 @@ func (p *SocketProxy) proxy(ctx context.Context, local net.Conn) {
 	}
 	defer remote.Close()
 
-	// Child context so the watcher goroutine exits when proxy() returns,
-	// preventing a goroutine leak per connection.
-	// Timeout is not needed here: ExecCommand already applies a per-command
-	// timeout on the ctx it passes down, which kills cardano-cli and closes
-	// the local socket, unblocking io.Copy naturally.
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	// On shutdown (or ExecCommand timeout), force-close both connections so
-	// any blocked io.Copy returns immediately.
+	// Force-close both connections when context is done (app shutdown OR
+	// one direction finished), so any blocked io.Copy returns immediately.
 	go func() {
 		<-ctx.Done()
 		now := time.Now()
@@ -98,5 +93,10 @@ func (p *SocketProxy) proxy(ctx context.Context, local net.Conn) {
 	go func() { io.Copy(local, remote); done <- struct{}{} }() //nolint:errcheck
 
 	<-done
+	// One direction finished — cancel the context to trigger the watcher
+	// goroutine above, which force-closes both connections. Without this,
+	// io.Copy(local, remote) stays blocked on remote.Read() indefinitely
+	// when cardano-cli is killed, leaking a socat child process per call.
+	cancel()
 	<-done
 }
