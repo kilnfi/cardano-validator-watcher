@@ -49,7 +49,7 @@ cardano_validator_watcher_health_status 1
 		clients.cardano.EXPECT().Ping(ctx).Return(nil)
 
 		healthStore := &HealthStore{}
-		watcher := NewStatusWatcher(clients.bf, clients.cardano, metrics, healthStore)
+		watcher := NewStatusWatcher(clients.bf, clients.cardano, metrics, healthStore, DefaultRefreshInterval)
 		err := watcher.Start(ctx)
 		require.ErrorIs(t, err, context.Canceled)
 		b := bytes.NewBufferString(metricsExpectedOutput)
@@ -88,7 +88,7 @@ cardano_validator_watcher_health_status 0
 		clients.cardano.EXPECT().Ping(ctx).Return(nil)
 
 		healthStore := &HealthStore{}
-		watcher := NewStatusWatcher(clients.bf, clients.cardano, metrics, healthStore)
+		watcher := NewStatusWatcher(clients.bf, clients.cardano, metrics, healthStore, DefaultRefreshInterval)
 		err := watcher.Start(ctx)
 		require.ErrorIs(t, err, context.Canceled)
 		b := bytes.NewBufferString(metricsExpectedOutput)
@@ -127,7 +127,7 @@ cardano_validator_watcher_health_status 0
 		clients.cardano.EXPECT().Ping(ctx).Return(errors.New("cardano node is down"))
 
 		healthStore := &HealthStore{}
-		watcher := NewStatusWatcher(clients.bf, clients.cardano, metrics, healthStore)
+		watcher := NewStatusWatcher(clients.bf, clients.cardano, metrics, healthStore, DefaultRefreshInterval)
 		err := watcher.Start(ctx)
 		require.ErrorIs(t, err, context.Canceled)
 		b := bytes.NewBufferString(metricsExpectedOutput)

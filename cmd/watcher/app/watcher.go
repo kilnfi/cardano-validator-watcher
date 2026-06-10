@@ -331,7 +331,13 @@ func startStatusWatcher(
 	healthStore *watcher.HealthStore,
 ) {
 	eg.Go(func() error {
-		statusWatcher := watcher.NewStatusWatcher(blockfrost, cardano, metrics, healthStore)
+		statusWatcher := watcher.NewStatusWatcher(
+			blockfrost,
+			cardano,
+			metrics,
+			healthStore,
+			time.Second*time.Duration(cfg.StatusWatcherConfig.RefreshInterval),
+		)
 		logger.InfoContext(ctx,
 			"starting watcher",
 			slog.String("component", "status-watcher"),
