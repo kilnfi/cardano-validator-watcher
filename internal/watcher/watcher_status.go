@@ -13,15 +13,14 @@ import (
 )
 
 const (
-	RefreshInterval   = 15 * time.Second
-	RefreshMultiplier = 2
+	// DefaultRefreshInterval is used when no refresh interval is configured.
+	DefaultRefreshInterval = 15 * time.Second
 )
 
 type HealthStore struct {
 	mu sync.RWMutex
 
-	health          bool
-	lastRefreshTime time.Time
+	health bool
 }
 
 func NewHealthStore() *HealthStore {
@@ -33,7 +32,6 @@ func (r *HealthStore) SetHealth(health bool) {
 	defer r.mu.Unlock()
 
 	r.health = health
-	r.lastRefreshTime = time.Now()
 }
 
 func (r *HealthStore) GetHealth() bool {
@@ -44,11 +42,12 @@ func (r *HealthStore) GetHealth() bool {
 }
 
 type StatusWatcher struct {
-	logger      *slog.Logger
-	blockfrost  blockfrost.Client
-	cardano     cardano.CardanoClient
-	metrics     *metrics.Collection
-	healthStore *HealthStore
+	logger          *slog.Logger
+	blockfrost      blockfrost.Client
+	cardano         cardano.CardanoClient
+	metrics         *metrics.Collection
+	healthStore     *HealthStore
+	refreshInterval time.Duration
 }
 
 func NewStatusWatcher(
@@ -56,22 +55,28 @@ func NewStatusWatcher(
 	cardano cardano.CardanoClient,
 	metrics *metrics.Collection,
 	healthStore *HealthStore,
+	refreshInterval time.Duration,
 ) *StatusWatcher {
 	logger := slog.With(
 		slog.String("component", "status-watcher"),
 	)
 
+	if refreshInterval <= 0 {
+		refreshInterval = DefaultRefreshInterval
+	}
+
 	return &StatusWatcher{
-		logger:      logger,
-		blockfrost:  blockfrost,
-		cardano:     cardano,
-		metrics:     metrics,
-		healthStore: healthStore,
+		logger:          logger,
+		blockfrost:      blockfrost,
+		cardano:         cardano,
+		metrics:         metrics,
+		healthStore:     healthStore,
+		refreshInterval: refreshInterval,
 	}
 }
 
 func (w *StatusWatcher) Start(ctx context.Context) error {
-	ticker := time.NewTicker(RefreshInterval)
+	ticker := time.NewTicker(w.refreshInterval)
 	defer ticker.Stop()
 
 	for {
@@ -86,29 +91,34 @@ func (w *StatusWatcher) Start(ctx context.Context) error {
 	}
 }
 
+// checkStatus probes Blockfrost and the Cardano node on every call and updates
+// the health store accordingly. It must run unconditionally on each tick: each
+// probe opens a fresh connection (cardano-cli spawns a new process, Blockfrost a
+// new HTTP request), so an unhealthy state recovers as soon as the upstream comes
+// back. Gating this behind a "last refresh was recent" guard risks freezing the
+// health state permanently if the goroutine is ever starved (e.g. GC pause under
+// memory pressure) for longer than the guard window.
 func (w *StatusWatcher) checkStatus(ctx context.Context) {
-	if w.healthStore.lastRefreshTime.IsZero() || time.Since(w.healthStore.lastRefreshTime) < RefreshMultiplier*RefreshInterval {
-		status, err := w.blockfrost.Health(ctx)
-		if err != nil {
-			w.logger.ErrorContext(ctx, "unable to check blockfrost health", slog.String("error", err.Error()))
-		}
+	status, err := w.blockfrost.Health(ctx)
+	if err != nil {
+		w.logger.ErrorContext(ctx, "unable to check blockfrost health", slog.String("error", err.Error()))
+	}
 
-		if !status.IsHealthy {
-			w.logger.ErrorContext(ctx, "Blockfrost API is not responding")
-		}
+	if !status.IsHealthy {
+		w.logger.ErrorContext(ctx, "Blockfrost API is not responding")
+	}
 
-		isConnected, err := w.checkCardanoNodeConnection(ctx)
-		if err != nil {
-			w.logger.ErrorContext(ctx, "Cardano node is not responding", slog.String("error", err.Error()))
-		}
+	isConnected, err := w.checkCardanoNodeConnection(ctx)
+	if err != nil {
+		w.logger.ErrorContext(ctx, "Cardano node is not responding", slog.String("error", err.Error()))
+	}
 
-		if !status.IsHealthy || !isConnected {
-			w.metrics.HealthStatus.Set(0)
-			w.healthStore.SetHealth(false)
-		} else {
-			w.metrics.HealthStatus.Set(1)
-			w.healthStore.SetHealth(true)
-		}
+	if !status.IsHealthy || !isConnected {
+		w.metrics.HealthStatus.Set(0)
+		w.healthStore.SetHealth(false)
+	} else {
+		w.metrics.HealthStatus.Set(1)
+		w.healthStore.SetHealth(true)
 	}
 }
 

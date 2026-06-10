@@ -63,10 +63,12 @@ func (p *SocketProxy) Start(ctx context.Context) {
 	}()
 }
 
+const dialTimeout = 10 * time.Second
+
 func (p *SocketProxy) proxy(ctx context.Context, local net.Conn) {
 	defer local.Close()
 
-	remote, err := (&net.Dialer{}).DialContext(ctx, "tcp", p.remoteAddr)
+	remote, err := (&net.Dialer{Timeout: dialTimeout}).DialContext(ctx, "tcp", p.remoteAddr)
 	if err != nil {
 		p.logger.ErrorContext(ctx, "failed to connect to remote",
 			slog.String("remote", p.remoteAddr),
