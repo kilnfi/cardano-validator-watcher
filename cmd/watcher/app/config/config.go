@@ -57,14 +57,20 @@ type BlockFrostConfig struct {
 }
 
 type CardanoConfig struct {
-	ConfigDir  string `mapstructure:"config-dir"`
-	Timezone   string `mapstructure:"timezone"`
-	SocketPath string `mapstructure:"socket-path"`
+	ConfigDir string `mapstructure:"config-dir"`
+	Timezone  string `mapstructure:"timezone"`
 
-	// NodeHost/SocatPort replace the socat sidecar in the watcher pod:
-	// the watcher creates a local Unix socket proxy to node-host:socat-port.
-	NodeHost  string `mapstructure:"node-host"`
-	SocatPort int    `mapstructure:"socat-port"`
+	// Nodes lists the cardano-node TCP endpoints the watcher connects to (each
+	// a host:port bridge in front of a node, e.g. socat exposing the node's
+	// Unix socket). The watcher proxies cardano-cli to these endpoints and
+	// fails over between them when one is unreachable. Point them at relays on
+	// a trusted/private network, not at the block producer.
+	Nodes []CardanoNode `mapstructure:"nodes"`
+}
+
+type CardanoNode struct {
+	Host string `mapstructure:"host"`
+	Port int    `mapstructure:"port"`
 }
 
 type DatabaseConfig struct {
@@ -103,6 +109,15 @@ func (c *Config) Validate() error {
 
 	if c.Blockfrost.ProjectID == "" || c.Blockfrost.Endpoint == "" {
 		return errors.New("blockfrost project-id and endpoint are required")
+	}
+
+	if len(c.Cardano.Nodes) == 0 {
+		return errors.New("at least one cardano node must be defined in cardano.nodes")
+	}
+	for _, node := range c.Cardano.Nodes {
+		if node.Host == "" || node.Port == 0 {
+			return errors.New("each cardano node must define a host and a port")
+		}
 	}
 
 	return nil

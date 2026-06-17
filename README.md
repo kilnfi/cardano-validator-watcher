@@ -16,26 +16,40 @@ This project use the following dependencies:
 
 ## Usage
 
-The watcher needs access to your Cardano node's socket. Two options are available:
-
-### Option A — socat sidecar (watcher has direct socket access)
-
-Run socat alongside the watcher to expose the node socket locally:
+The watcher needs to reach your Cardano node(s) over TCP. A `cardano-node` only
+exposes a local Unix socket, so each node must sit behind a small TCP bridge
+(typically `socat`) that exposes that socket over `host:port`:
 
 ```bash
-# With Kubernetes
-kubectl port-forward pod/<POD_NAME> 3002 &
-socat UNIX-LISTEN:/tmp/cardano.socket,fork,reuseaddr,unlink-early TCP:127.0.0.1:3002
-
-# Without Kubernetes
-socat UNIX-LISTEN:/tmp/cardano.socket,fork,reuseaddr,unlink-early TCP:<IP>:<PORT>
+# On the node host/pod: expose the node's Unix socket over TCP
+socat TCP-LISTEN:3002,reuseaddr,fork UNIX-CONNECT:/path/to/node.socket
 ```
 
-Then configure `socket-path` in the watcher config.
+Then list these endpoints under `cardano.nodes` in the watcher config. The
+watcher runs an internal Unix-socket proxy that forwards `cardano-cli` to these
+endpoints and **fails over** between them when one is unreachable:
 
-### Option B — Go socket proxy (no socat needed in the watcher pod)
+```yaml
+cardano:
+  config-dir: config/preprod
+  timezone: UTC
+  nodes:
+    - host: cardano-node-primary
+      port: 3002
+    - host: cardano-node-secondary   # optional, for failover
+      port: 3002
+```
 
-If socat is already running on the node pod (exposing the socket over TCP), the watcher can connect directly without a local socat sidecar. Configure `node-host` and `socat-port` and the watcher will manage the proxy internally.
+> [!WARNING]
+> **Keep these endpoints on a trusted/private network.** The Cardano
+> node-to-client protocol has **no authentication or encryption** — anyone who
+> can reach the TCP port can drive your node. Restrict access with a
+> NetworkPolicy / firewall / private VPC; do **not** expose it to the public
+> internet. For the same reason, point the watcher at **relays**, not at your
+> block producer, and never put a raw `socat`/TCP node endpoint on a public
+> address. (Using a third-party "public" Cardano node over this protocol is
+> neither supported nor advisable — public providers expose HTTP APIs such as
+> Blockfrost, not the raw node socket.)
 
 Ensure that you have downloaded the [Genesis configuration files](https://book.world.dev.cardano.org/environments.html). You also need to provide the VRF signing key for each monitored pool.
 
@@ -57,9 +71,6 @@ Then, to start the watcher, execute the following command:
 | `--database-path`                     | Path to the local database mainly used by the Cardano client                          | `watcher.db`              | No       |
 | `--cardano-config-dir`                | Path to the directory where Cardano configuration files are stored                    | `/config`                 | No       |
 | `--cardano-timezone`                  | Timezone to use with cardano-cli                                                      | `UTC`                     | No       |
-| `--cardano-socket-path`               | Path of the socket to communicate with a Cardano node (Option A)                      | `/var/run/cardano.socket` | No       |
-| `--cardano-node-host`                 | Hostname/IP of the cardano-node service (Option B)                                    |                           | No       |
-| `--cardano-socat-port`                | TCP port where socat on the node pod exposes the Unix socket (Option B)               |                           | No       |
 | `--blockfrost-project-id`             | Blockfrost project ID                                                                 |                           | Yes      |
 | `--blockfrost-endpoint`               | Blockfrost API endpoint                                                               |                           | Yes      |
 | `--blockfrost-max-routines`           | Number of routines used by Blockfrost to perform concurrent actions                   | `10`                      | No       |
@@ -114,8 +125,12 @@ http:
   port: 8080
 cardano:
   config-dir: "config"
-  socket-path: "/tmp/cardano.socket"
   timezone: "UTC"
+  nodes:
+    - host: "cardano-node-primary"
+      port: 3002
+    - host: "cardano-node-secondary"
+      port: 3002
 ```
 
 ### Pools Settings
@@ -232,28 +247,28 @@ http:
 
 ### Cardano Settings
 
-| Field          | Description                                                              | Example                      |
-|----------------|--------------------------------------------------------------------------|------------------------------|
-| `config-dir`   | Path to the directory where Cardano configuration files are stored       | `"config"`                   |
-| `timezone`     | Timezone to use with cardano-cli                                         | `"UTC"`                      |
-| `socket-path`  | Path of the socket to communicate with a Cardano node (Option A)         | `"/tmp/cardano.socket"`      |
-| `node-host`    | Hostname/IP of the cardano-node service (Option B)                       | `"cardano-node-service"`     |
-| `socat-port`   | TCP port where socat on the node pod exposes the Unix socket (Option B)  | `3002`                       |
+| Field          | Description                                                                          | Example                      |
+|----------------|--------------------------------------------------------------------------------------|------------------------------|
+| `config-dir`   | Path to the directory where Cardano configuration files are stored                   | `"config"`                   |
+| `timezone`     | Timezone to use with cardano-cli                                                     | `"UTC"`                      |
+| `nodes`        | List of cardano-node TCP endpoints (`host`/`port`) the watcher proxies and fails over between | see below           |
 
 ```yaml
-# Option A: socat sidecar in the watcher pod
 cardano:
   config-dir: "config"
   timezone: "UTC"
-  socket-path: "/tmp/cardano.socket"
-
-# Option B: Go-managed proxy, no socat needed in the watcher pod
-cardano:
-  config-dir: "config"
-  timezone: "UTC"
-  node-host: "cardano-node-service"
-  socat-port: 3002
+  nodes:
+    - host: "cardano-node-primary"
+      port: 3002
+    - host: "cardano-node-secondary"   # optional, for failover
+      port: 3002
 ```
+
+> [!WARNING]
+> These endpoints expose the unauthenticated, unencrypted node-to-client
+> protocol. Keep them on a trusted/private network (NetworkPolicy / firewall /
+> VPC), point them at **relays** (not the block producer), and never expose a
+> raw node/socat endpoint on the public internet.
 
 ## Advanced
 
@@ -301,4 +316,6 @@ env:
 | `cardano_validator_watcher_network_active_stake`                  | Total active stake in the network                                           | Gauge       | - |
 | `cardano_validator_watcher_chain_id`                              | ID of the chain                                                             | Gauge       | - |
 | `cardano_validator_watcher_health_status`                         | Health status of the Cardano validator watcher: 1 = healthy, 0 = unhealthy  | Gauge       | - |
+| `cardano_validator_watcher_cardano_node_up`                       | Reachability of each configured cardano-node endpoint: 1 = reachable, 0 = down | Gauge    | `remote` |
+| `cardano_validator_watcher_cardano_node_active`                   | cardano-node endpoint currently selected by the socket proxy: 1 = active, 0 = standby | Gauge | `remote` |
 

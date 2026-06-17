@@ -35,9 +35,12 @@ http:
 cardano:
   config-dir: config/preprod
   timezone: UTC
-  # Option A: watcher has direct access to the node's Unix socket (e.g. socat sidecar in the watcher pod)
-  socket-path: /tmp/cardano.socket
-  # Option B: watcher connects to the node via TCP — no socat sidecar needed in the watcher pod.
-  # The watcher creates a local Unix socket proxy that forwards to socat running on the node pod.
-  # node-host: cardano-node-service
-  # socat-port: 3002
+  # cardano-node TCP endpoints (host:port bridges in front of a node, e.g. socat
+  # exposing the node's Unix socket). The watcher proxies cardano-cli to these
+  # and fails over between them when one is unreachable. List one or several.
+  # Point them at relays on a trusted/private network, not at the block producer.
+  nodes:
+    - host: cardano-node-primary
+      port: 3002
+    - host: cardano-node-secondary
+      port: 3002

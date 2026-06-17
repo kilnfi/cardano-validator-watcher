@@ -85,9 +85,6 @@ func NewWatcherCommand() *cobra.Command {
 	cmd.Flags().StringP("database-path", "", "watcher.db", "path to the local database mainly used by cardano client")
 	cmd.Flags().StringP("cardano-config-dir", "", "/config", "path to the directory where the cardano config files are stored")
 	cmd.Flags().StringP("cardano-timezone", "", "UTC", "timezone to use with cardano-cli - https://en.wikipedia.org/wiki/List_of_tz_database_time_zones")
-	cmd.Flags().StringP("cardano-socket-path", "", "/var/run/cardano.socket", "socket path to communicate with a cardano node (used when socat sidecar is present)")
-	cmd.Flags().StringP("cardano-node-host", "", "", "hostname/IP of the cardano-node service (enables TCP mode, removes need for socat in watcher pod)")
-	cmd.Flags().IntP("cardano-socat-port", "", 0, "TCP port where socat on the cardano-node pod exposes the Unix socket (enables Go socket proxy)")
 	cmd.Flags().StringP("blockfrost-project-id", "", "", "blockfrost project id")
 	cmd.Flags().StringP("blockfrost-endpoint", "", "", "blockfrost API endpoint")
 	cmd.Flags().IntP("blockfrost-max-routines", "", 10, "number of routines used by blockfrost to perform concurrent actions")
@@ -109,9 +106,6 @@ func NewWatcherCommand() *cobra.Command {
 	checkError(viper.BindPFlag("database.path", cmd.Flag("database-path")), "unable to bind database-path flag")
 	checkError(viper.BindPFlag("cardano.config-dir", cmd.Flag("cardano-config-dir")), "unable to bind cardano-config-dir flag")
 	checkError(viper.BindPFlag("cardano.timezone", cmd.Flag("cardano-timezone")), "unable to bind cardano-timezone flag")
-	checkError(viper.BindPFlag("cardano.socket-path", cmd.Flag("cardano-socket-path")), "unable to bind cardano-socket-path flag")
-	checkError(viper.BindPFlag("cardano.node-host", cmd.Flag("cardano-node-host")), "unable to bind cardano-node-host flag")
-	checkError(viper.BindPFlag("cardano.socat-port", cmd.Flag("cardano-socat-port")), "unable to bind cardano-socat-port flag")
 	checkError(viper.BindPFlag("blockfrost.project-id", cmd.Flag("blockfrost-project-id")), "unable to bind blockfrost-project-id flag")
 	checkError(viper.BindPFlag("blockfrost.endpoint", cmd.Flag("blockfrost-endpoint")), "unable to bind blockfrost-endpoint flag")
 	checkError(viper.BindPFlag("blockfrost.max-routines", cmd.Flag("blockfrost-max-routines")), "unable to bind blockfrost-max-routines flag")
@@ -189,25 +183,25 @@ func run(_ *cobra.Command, _ []string) error {
 	// Initialize blockfrost and cardano clients with options
 	blockfrost := createBlockfrostClient()
 
-	// Determine socket path: use a Go-managed proxy when node-host + socat-port
-	// are configured, removing the need for a socat sidecar in the watcher pod.
-	socketPath := cfg.Cardano.SocketPath
-	if cfg.Cardano.NodeHost != "" && cfg.Cardano.SocatPort != 0 {
-		const proxySocketPath = "/tmp/cardano-proxy.socket"
-		proxy, err := cardanocli.NewSocketProxy(ctx, proxySocketPath, cfg.Cardano.NodeHost, cfg.Cardano.SocatPort)
-		if err != nil {
-			return fmt.Errorf("unable to create cardano socket proxy: %w", err)
-		}
-		proxy.Start(ctx)
-		socketPath = proxy.SocketPath()
-	}
-
-	cardano := createCardanoClient(blockfrost, socketPath)
-
 	// Initialize prometheus metrics
 	registry := prometheus.NewRegistry()
 	metrics := metrics.NewCollection()
 	metrics.MustRegister(registry)
+
+	// The watcher proxies cardano-cli through a local Unix socket that forwards
+	// to the configured cardano-node TCP endpoints, failing over between them.
+	const proxySocketPath = "/tmp/cardano-proxy.socket"
+	remotes := make([]cardanocli.RemoteNode, 0, len(cfg.Cardano.Nodes))
+	for _, node := range cfg.Cardano.Nodes {
+		remotes = append(remotes, cardanocli.RemoteNode{Host: node.Host, Port: node.Port})
+	}
+	proxy, err := cardanocli.NewSocketProxy(ctx, proxySocketPath, remotes, metrics)
+	if err != nil {
+		return fmt.Errorf("unable to create cardano socket proxy: %w", err)
+	}
+	proxy.Start(ctx)
+
+	cardano := createCardanoClient(blockfrost, proxy.SocketPath())
 
 	epoch, err := blockfrost.GetLatestEpoch(ctx)
 	if err != nil {
