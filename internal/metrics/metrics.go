@@ -29,6 +29,8 @@ type Collection struct {
 	LatestSlotProcessedByBlockWatcher prometheus.Gauge
 	NextSlotLeader                    *prometheus.GaugeVec
 	HealthStatus                      prometheus.Gauge
+	CardanoNodeUp                     *prometheus.GaugeVec
+	CardanoNodeActive                 *prometheus.GaugeVec
 }
 
 func NewCollection() *Collection {
@@ -206,6 +208,22 @@ func NewCollection() *Collection {
 				Help:      "Health status of the Cardano validator watcher: 1 = healthy, 0 = unhealthy",
 			},
 		),
+		CardanoNodeUp: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: "cardano_validator_watcher",
+				Name:      "cardano_node_up",
+				Help:      "Reachability of each configured cardano-node endpoint: 1 = reachable, 0 = down",
+			},
+			[]string{"remote"},
+		),
+		CardanoNodeActive: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: "cardano_validator_watcher",
+				Name:      "cardano_node_active",
+				Help:      "Cardano-node endpoint currently selected by the socket proxy: 1 = active, 0 = standby",
+			},
+			[]string{"remote"},
+		),
 	}
 }
 
@@ -235,4 +253,6 @@ func (m *Collection) MustRegister(reg prometheus.Registerer) {
 	reg.MustRegister(m.LatestSlotProcessedByBlockWatcher)
 	reg.MustRegister(m.NextSlotLeader)
 	reg.MustRegister(m.HealthStatus)
+	reg.MustRegister(m.CardanoNodeUp)
+	reg.MustRegister(m.CardanoNodeActive)
 }
