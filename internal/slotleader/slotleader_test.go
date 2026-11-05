@@ -498,6 +498,36 @@ func TestGetNextSlotLeader(t *testing.T) {
 		require.Equal(t, 1000, slot)
 	})
 
+	t.Run("GoodPath_GetNextSlotLeader_EmptySchedule", func(t *testing.T) {
+		t.Parallel()
+
+		clients := setupClients(t)
+		pools := setupPools(t)
+		db := setupDB(t)
+		registry := setupRegistry(t)
+		epoch := 100
+		height := 100
+
+		slotLeaderService := NewSlotLeaderService(
+			db.db,
+			clients.cardano,
+			clients.bf, pools,
+			registry.metrics,
+			0,
+		)
+
+		db.mock.ExpectQuery("SELECT * FROM slots WHERE pool_id = ? AND epoch = ?").
+			WithArgs(pools[0].ID, epoch).
+			WillReturnRows(
+				sqlmock.NewRows([]string{"id", "epoch", "pool_id", "slot_qty", "slots", "hash"}).
+					AddRow(1, epoch, pools[0].ID, 0, "[]", "hash"),
+			)
+
+		slot, err := slotLeaderService.GetNextSlotLeader(context.Background(), pools[0].ID, height, epoch)
+		require.NoError(t, err)
+		require.Equal(t, 0, slot)
+	})
+
 	t.Run("SadPath_GetNextSlotLeader_UnableToGetSlotLeaders", func(t *testing.T) {
 		t.Parallel()
 
@@ -750,6 +780,33 @@ func TestIsSlotLeader(t *testing.T) {
 
 		isLeader, err := slotLeaderService.IsSlotLeader(context.Background(), pools[0].ID, height, epoch)
 		require.ErrorContains(t, err, fmt.Sprintf("unable to check if slot %d is a leader for pool %s", height, pools[0].ID))
+		require.False(t, isLeader)
+	})
+
+	t.Run("GoodPath_IsSlotLeader_NoScheduleRow", func(t *testing.T) {
+		t.Parallel()
+
+		clients := setupClients(t)
+		pools := setupPools(t)
+		db := setupDB(t)
+		registry := setupRegistry(t)
+		epoch := 100
+		height := 100
+
+		slotLeaderService := NewSlotLeaderService(
+			db.db,
+			clients.cardano,
+			clients.bf, pools,
+			registry.metrics,
+			0,
+		)
+
+		db.mock.ExpectQuery("SELECT slots FROM slots WHERE pool_id = ? AND epoch = ?").
+			WithArgs(pools[0].ID, epoch).
+			WillReturnRows(sqlmock.NewRows([]string{"slots"}))
+
+		isLeader, err := slotLeaderService.IsSlotLeader(context.Background(), pools[0].ID, height, epoch)
+		require.NoError(t, err)
 		require.False(t, isLeader)
 	})
 

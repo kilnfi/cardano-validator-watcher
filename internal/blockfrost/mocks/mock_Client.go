@@ -4,7 +4,6 @@ package blockfrost
 
 import (
 	blockfrost_go "github.com/blockfrost/blockfrost-go"
-	blockfrost "github.com/kilnfi/cardano-validator-watcher/internal/blockfrost"
 
 	context "context"
 
@@ -25,22 +24,22 @@ func (_m *MockClient) EXPECT() *MockClient_Expecter {
 }
 
 // GetAccountInfo provides a mock function with given fields: ctx, stakeAddress
-func (_m *MockClient) GetAccountInfo(ctx context.Context, stakeAddress string) (blockfrost.Account, error) {
+func (_m *MockClient) GetAccountInfo(ctx context.Context, stakeAddress string) (blockfrost_go.Account, error) {
 	ret := _m.Called(ctx, stakeAddress)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetAccountInfo")
 	}
 
-	var r0 blockfrost.Account
+	var r0 blockfrost_go.Account
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string) (blockfrost.Account, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string) (blockfrost_go.Account, error)); ok {
 		return rf(ctx, stakeAddress)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string) blockfrost.Account); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string) blockfrost_go.Account); ok {
 		r0 = rf(ctx, stakeAddress)
 	} else {
-		r0 = ret.Get(0).(blockfrost.Account)
+		r0 = ret.Get(0).(blockfrost_go.Account)
 	}
 
 	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
@@ -71,12 +70,12 @@ func (_c *MockClient_GetAccountInfo_Call) Run(run func(ctx context.Context, stak
 	return _c
 }
 
-func (_c *MockClient_GetAccountInfo_Call) Return(_a0 blockfrost.Account, _a1 error) *MockClient_GetAccountInfo_Call {
+func (_c *MockClient_GetAccountInfo_Call) Return(_a0 blockfrost_go.Account, _a1 error) *MockClient_GetAccountInfo_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *MockClient_GetAccountInfo_Call) RunAndReturn(run func(context.Context, string) (blockfrost.Account, error)) *MockClient_GetAccountInfo_Call {
+func (_c *MockClient_GetAccountInfo_Call) RunAndReturn(run func(context.Context, string) (blockfrost_go.Account, error)) *MockClient_GetAccountInfo_Call {
 	_c.Call.Return(run)
 	return _c
 }
