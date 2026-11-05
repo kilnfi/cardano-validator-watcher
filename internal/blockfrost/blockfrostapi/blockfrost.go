@@ -57,6 +57,15 @@ func (c *Client) GetPoolInfo(ctx context.Context, PoolID string) (blockfrost.Poo
 	return c.blockfrost.Pool(ctx, PoolID)
 }
 
+// poolHistoryEpochs is the number of recent epochs fetched from the pool history: rewards
+// of the last epochs are only known once computed, the most recent entries are still empty.
+const poolHistoryEpochs = 5
+
+//nolint:wrapcheck
+func (c *Client) GetPoolHistory(ctx context.Context, PoolID string) ([]blockfrost.PoolHistory, error) {
+	return c.blockfrost.PoolHistory(ctx, PoolID, blockfrost.APIQueryParams{Count: poolHistoryEpochs, Page: 1, Order: "desc"})
+}
+
 //nolint:wrapcheck
 func (c *Client) GetPoolMetadata(ctx context.Context, PoolID string) (blockfrost.PoolMetadata, error) {
 	return c.blockfrost.PoolMetadata(ctx, PoolID)

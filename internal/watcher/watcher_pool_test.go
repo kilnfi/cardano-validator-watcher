@@ -16,6 +16,14 @@ import (
 
 // expectLeaderElection provides the network values used to compute the leader slot odds:
 // 5% active slots, 432000 slots per epoch and 5.8e15 lovelace of active stake.
+// expectPoolHistory returns the real history of a mainnet pool: epoch 664 is the last rewarded one.
+func expectPoolHistory(c *clients) {
+	c.bf.EXPECT().GetPoolHistory(mock.Anything, mock.Anything).Return([]bfAPI.PoolHistory{
+		{Epoch: 664, Blocks: 53, ActiveStake: "66865289271288", Rewards: "15108007310", Fees: "1078400365"},
+		{Epoch: 663, Blocks: 57, ActiveStake: "66833794513338", Rewards: "16269620224", Fees: "1136481011"},
+	}, nil).Maybe()
+}
+
 // expectExcludedPool answers for pool-1, which is excluded in setupPools.
 func expectExcludedPool(c *clients) {
 	c.bf.EXPECT().GetPoolInfo(mock.Anything, "pool-1").
@@ -24,7 +32,7 @@ func expectExcludedPool(c *clients) {
 
 func expectLeaderElection(c *clients) {
 	c.bf.EXPECT().GetGenesisInfo(mock.Anything).
-		Return(bfAPI.GenesisBlock{ActiveSlotsCoefficient: 0.05, EpochLength: 432000}, nil).Maybe()
+		Return(bfAPI.GenesisBlock{ActiveSlotsCoefficient: 0.05, EpochLength: 432000, SlotLength: 1}, nil).Maybe()
 	c.bf.EXPECT().GetNetworkInfo(mock.Anything).
 		Return(bfAPI.NetworkInfo{Stake: bfAPI.NetworkStake{Active: "5800000000000000"}}, nil).Maybe()
 }
@@ -38,6 +46,7 @@ func TestPoolWatcher_Start(t *testing.T) {
 
 		clients := setupClients(t)
 		expectLeaderElection(clients)
+		expectPoolHistory(clients)
 		expectExcludedPool(clients)
 		registry := setupRegistry(t)
 
@@ -129,6 +138,13 @@ cardano_validator_watcher_pool_declared_pledge{pool_id="pool-0",pool_instance="p
 		err = testutil.CollectAndCompare(registry.registry, b, registry.metricsUnderTest...)
 		require.NoError(t, err)
 
+		// rewards of the last rewarded epoch (664) and delegators ROA: (rewards - fees) / active stake * 73
+		poolLabels := []string{"pool-0", "pool-0", "pool-0"}
+		require.InDelta(t, 15108007310, testutil.ToFloat64(registry.metrics.PoolLastEpochRewards.WithLabelValues(poolLabels...)), 0)
+		require.InDelta(t, 1078400365, testutil.ToFloat64(registry.metrics.PoolLastEpochOperatorRewards.WithLabelValues(poolLabels...)), 0)
+		require.InDelta(t, 664, testutil.ToFloat64(registry.metrics.PoolLastRewardedEpoch.WithLabelValues(poolLabels...)), 0)
+		require.InDelta(t, 0.01532, testutil.ToFloat64(registry.metrics.PoolLastEpochROA.WithLabelValues(poolLabels...)), 0.00001)
+
 		// ~0.98% of the active stake: ~218 leader slots expected, no chance to get none
 		expected := testutil.ToFloat64(registry.metrics.PoolExpectedLeaderSlots.WithLabelValues("pool-0", "pool-0", "pool-0"))
 		require.InDelta(t, 217.7, expected, 0.1)
@@ -141,6 +157,7 @@ cardano_validator_watcher_pool_declared_pledge{pool_id="pool-0",pool_instance="p
 
 		clients := setupClients(t)
 		expectLeaderElection(clients)
+		expectPoolHistory(clients)
 		expectExcludedPool(clients)
 		registry := setupRegistry(t)
 
@@ -208,6 +225,7 @@ cardano_validator_watcher_pool_pledge_met{pool_id="pool-0",pool_instance="pool-0
 
 		clients := setupClients(t)
 		expectLeaderElection(clients)
+		expectPoolHistory(clients)
 		expectExcludedPool(clients)
 		registry := setupRegistry(t)
 
@@ -243,6 +261,7 @@ cardano_validator_watcher_pool_pledge_met{pool_id="pool-0",pool_instance="pool-0
 
 		clients := setupClients(t)
 		expectLeaderElection(clients)
+		expectPoolHistory(clients)
 		expectExcludedPool(clients)
 		registry := setupRegistry(t)
 
@@ -285,6 +304,7 @@ cardano_validator_watcher_pool_pledge_met{pool_id="pool-0",pool_instance="pool-0
 
 		clients := setupClients(t)
 		expectLeaderElection(clients)
+		expectPoolHistory(clients)
 		expectExcludedPool(clients)
 		registry := setupRegistry(t)
 
@@ -327,6 +347,7 @@ cardano_validator_watcher_pool_pledge_met{pool_id="pool-0",pool_instance="pool-0
 
 		clients := setupClients(t)
 		expectLeaderElection(clients)
+		expectPoolHistory(clients)
 		expectExcludedPool(clients)
 		registry := setupRegistry(t)
 
@@ -373,6 +394,7 @@ cardano_validator_watcher_pool_pledge_met{pool_id="pool-0",pool_instance="pool-0
 
 		clients := setupClients(t)
 		expectLeaderElection(clients)
+		expectPoolHistory(clients)
 		expectExcludedPool(clients)
 		registry := setupRegistry(t)
 
@@ -423,6 +445,7 @@ cardano_validator_watcher_pool_pledge_met{pool_id="pool-0",pool_instance="pool-0
 
 		clients := setupClients(t)
 		expectLeaderElection(clients)
+		expectPoolHistory(clients)
 		expectExcludedPool(clients)
 		registry := setupRegistry(t)
 
@@ -474,6 +497,7 @@ func TestPoolWatcher_ExcludedPoolStaysVisible(t *testing.T) {
 
 	clients := setupClients(t)
 	expectLeaderElection(clients)
+	expectPoolHistory(clients)
 	registry := setupRegistry(t)
 	ctx := setupContextWithTimeout(t, time.Second*5)
 
@@ -496,4 +520,24 @@ func TestPoolWatcher_ExcludedPoolStaysVisible(t *testing.T) {
 	require.InDelta(t, 42, testutil.ToFloat64(registry.metrics.PoolBlocksMinted.WithLabelValues(excluded...)), 0)
 	require.InDelta(t, 221.5, testutil.ToFloat64(registry.metrics.PoolExpectedLeaderSlots.WithLabelValues(excluded...)), 0.1)
 	require.InDelta(t, 0, testutil.ToFloat64(registry.metrics.PoolExcluded.WithLabelValues(pool[0].Name, pool[0].ID, pool[0].Instance)), 0)
+}
+
+func TestLastRewardedEpoch(t *testing.T) {
+	t.Parallel()
+
+	// the newest epoch has blocks but no rewards yet: the previous one is used
+	entry, ok := lastRewardedEpoch([]bfAPI.PoolHistory{
+		{Epoch: 665, Blocks: 40, Rewards: "0"},
+		{Epoch: 664, Blocks: 53, Rewards: "15108007310"},
+	})
+	require.True(t, ok)
+	require.Equal(t, 664, entry.Epoch)
+
+	// an epoch without block legitimately has no rewards (small pool)
+	entry, ok = lastRewardedEpoch([]bfAPI.PoolHistory{{Epoch: 665, Blocks: 0, Rewards: "0"}})
+	require.True(t, ok)
+	require.Equal(t, 665, entry.Epoch)
+
+	_, ok = lastRewardedEpoch(nil)
+	require.False(t, ok)
 }
