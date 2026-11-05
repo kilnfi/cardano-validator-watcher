@@ -306,6 +306,10 @@ env:
 | `cardano_validator_watcher_pool_no_leader_slot_probability`       | Probability (0 to 1) to get no leader slot in the current epoch              | GaugeVec    | `pool_name`, `pool_id`, `pool_instance` |
 | `cardano_validator_watcher_pool_excluded`                         | Whether the pool is excluded from block monitoring (0 or 1)                 | GaugeVec    | `pool_name`, `pool_id`, `pool_instance` |
 | `cardano_validator_watcher_pool_blocks_minted`                    | Total number of blocks minted by the pool since its registration           | GaugeVec    | `pool_name`, `pool_id`, `pool_instance` |
+| `cardano_validator_watcher_pool_last_epoch_rewards`               | Total rewards in lovelace (operator share included) of the last rewarded epoch | GaugeVec | `pool_name`, `pool_id`, `pool_instance` |
+| `cardano_validator_watcher_pool_last_epoch_operator_rewards`      | Operator share (fixed cost and margin) in lovelace of the last rewarded epoch | GaugeVec | `pool_name`, `pool_id`, `pool_instance` |
+| `cardano_validator_watcher_pool_last_epoch_roa`                   | Annualized return of the delegators (ratio) for the last rewarded epoch     | GaugeVec    | `pool_name`, `pool_id`, `pool_instance` |
+| `cardano_validator_watcher_pool_last_rewarded_epoch`              | Epoch number of the rewards exposed by the `pool_last_epoch_*` metrics      | GaugeVec    | `pool_name`, `pool_id`, `pool_instance` |
 | `cardano_validator_watcher_next_epoch_start_time`                 | Start time of the next epoch in seconds                                     | Gauge       | - |
 | `cardano_validator_watcher_monitored_validators_count`            | Number of validators monitored by the watcher                               | Gauge       | - |
 | `cardano_validator_watcher_missed_blocks`                         | Number of missed blocks in the current epoch                                | CounterVec  | `pool_name`, `pool_id`, `pool_instance`, `epoch` |

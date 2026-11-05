@@ -12,6 +12,7 @@ type Client interface {
 	GetPoolInfo(ctx context.Context, PoolID string) (blockfrost.Pool, error)
 	GetPoolMetadata(ctx context.Context, PoolID string) (blockfrost.PoolMetadata, error)
 	GetPoolRelays(ctx context.Context, PoolID string) ([]blockfrost.PoolRelay, error)
+	GetPoolHistory(ctx context.Context, PoolID string) ([]blockfrost.PoolHistory, error)
 	GetBlockDistributionByPool(ctx context.Context, epoch int, PoolID string) ([]string, error)
 	GetLastBlockFromPreviousEpoch(ctx context.Context, prevEpoch int) (blockfrost.Block, error)
 	GetEpochParameters(ctx context.Context, epoch int) (blockfrost.EpochParameters, error)

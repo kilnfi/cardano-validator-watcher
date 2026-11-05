@@ -127,6 +127,9 @@ jobs:
           tag: ${{ github.ref_name }}
           file_glob: true
           overwrite: true
+          # release candidates must not become "Latest" nor the base of the release notes draft
+          prerelease: ${{ contains(github.ref_name, '-rc') }}
+          make_latest: ${{ !contains(github.ref_name, '-rc') }}
 
   images:
     needs: binaries

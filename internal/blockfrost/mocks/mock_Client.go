@@ -879,6 +879,65 @@ func (_c *MockClient_GetPoolMetadata_Call) RunAndReturn(run func(context.Context
 	return _c
 }
 
+// GetPoolHistory provides a mock function with given fields: ctx, PoolID
+func (_m *MockClient) GetPoolHistory(ctx context.Context, PoolID string) ([]blockfrost_go.PoolHistory, error) {
+	ret := _m.Called(ctx, PoolID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetPoolHistory")
+	}
+
+	var r0 []blockfrost_go.PoolHistory
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string) ([]blockfrost_go.PoolHistory, error)); ok {
+		return rf(ctx, PoolID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string) []blockfrost_go.PoolHistory); ok {
+		r0 = rf(ctx, PoolID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]blockfrost_go.PoolHistory)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = rf(ctx, PoolID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockClient_GetPoolHistory_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetPoolHistory'
+type MockClient_GetPoolHistory_Call struct {
+	*mock.Call
+}
+
+// GetPoolHistory is a helper method to define mock.On call
+//   - ctx context.Context
+//   - PoolID string
+func (_e *MockClient_Expecter) GetPoolHistory(ctx interface{}, PoolID interface{}) *MockClient_GetPoolHistory_Call {
+	return &MockClient_GetPoolHistory_Call{Call: _e.mock.On("GetPoolHistory", ctx, PoolID)}
+}
+
+func (_c *MockClient_GetPoolHistory_Call) Run(run func(ctx context.Context, PoolID string)) *MockClient_GetPoolHistory_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string))
+	})
+	return _c
+}
+
+func (_c *MockClient_GetPoolHistory_Call) Return(_a0 []blockfrost_go.PoolHistory, _a1 error) *MockClient_GetPoolHistory_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockClient_GetPoolHistory_Call) RunAndReturn(run func(context.Context, string) ([]blockfrost_go.PoolHistory, error)) *MockClient_GetPoolHistory_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetPoolRelays provides a mock function with given fields: ctx, PoolID
 func (_m *MockClient) GetPoolRelays(ctx context.Context, PoolID string) ([]blockfrost_go.PoolRelay, error) {
 	ret := _m.Called(ctx, PoolID)

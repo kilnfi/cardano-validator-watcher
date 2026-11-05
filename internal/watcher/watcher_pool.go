@@ -185,7 +185,13 @@ func (w *PoolWatcher) setLeaderOdds(labels []string, activeStake float64, electi
 type leaderElection struct {
 	activeSlotsCoeff float64
 	epochLength      int
+	slotLength       int
 	activeStake      float64
+}
+
+// epochsPerYear returns the number of epochs in a year (73 on mainnet: 5-day epochs).
+func (e *leaderElection) epochsPerYear() float64 {
+	return 365 * 86400 / float64(e.epochLength*e.slotLength)
 }
 
 func (w *PoolWatcher) getLeaderElection(ctx context.Context) (*leaderElection, error) {
@@ -214,6 +220,7 @@ func (w *PoolWatcher) getLeaderElection(ctx context.Context) (*leaderElection, e
 	return &leaderElection{
 		activeSlotsCoeff: float64(genesisInfo.ActiveSlotsCoefficient),
 		epochLength:      genesisInfo.EpochLength,
+		slotLength:       genesisInfo.SlotLength,
 		activeStake:      activeStake,
 	}, nil
 }
@@ -292,7 +299,69 @@ func (w *PoolWatcher) collectPool(ctx context.Context, pool pools.Pool, election
 		w.metrics.PoolsDRepRegistered.WithLabelValues(labels...).Set(0)
 	}
 
+	return w.collectLastEpochRewards(ctx, pool, labels, election)
+}
+
+// collectLastEpochRewards exports the rewards of the last epoch with computed rewards. The
+// metrics carry no epoch label: they move once per epoch and Prometheus keeps the history.
+func (w *PoolWatcher) collectLastEpochRewards(ctx context.Context, pool pools.Pool, labels []string, election *leaderElection) error {
+	history, err := w.getPoolHistory(ctx, pool.ID)
+	if err != nil {
+		return fmt.Errorf("unable to retrieve history for pool '%s': %w", pool.ID, err)
+	}
+
+	entry, ok := lastRewardedEpoch(history)
+	if !ok {
+		return nil
+	}
+	rewards, err := strconv.ParseFloat(entry.Rewards, 64)
+	if err != nil {
+		return fmt.Errorf("unable to convert rewards of pool '%s' to a number: %w", pool.ID, err)
+	}
+	operatorRewards, err := strconv.ParseFloat(entry.Fees, 64)
+	if err != nil {
+		return fmt.Errorf("unable to convert operator rewards of pool '%s' to a number: %w", pool.ID, err)
+	}
+	activeStake, err := strconv.ParseFloat(entry.ActiveStake, 64)
+	if err != nil {
+		return fmt.Errorf("unable to convert active stake of pool '%s' to a number: %w", pool.ID, err)
+	}
+
+	w.metrics.PoolLastEpochRewards.WithLabelValues(labels...).Set(rewards)
+	w.metrics.PoolLastEpochOperatorRewards.WithLabelValues(labels...).Set(operatorRewards)
+	w.metrics.PoolLastRewardedEpoch.WithLabelValues(labels...).Set(float64(entry.Epoch))
+	if election != nil && activeStake > 0 {
+		w.metrics.PoolLastEpochROA.WithLabelValues(labels...).Set((rewards - operatorRewards) / activeStake * election.epochsPerYear())
+	}
+
 	return nil
+}
+
+// lastRewardedEpoch returns the most recent epoch of the history (newest first) whose rewards
+// are computed. An epoch with blocks but no rewards is not computed yet; an epoch without
+// blocks legitimately has no rewards.
+func lastRewardedEpoch(history []bfAPI.PoolHistory) (bfAPI.PoolHistory, bool) {
+	for _, entry := range history {
+		if entry.Rewards != "0" || entry.Blocks == 0 {
+			return entry, true
+		}
+	}
+	return bfAPI.PoolHistory{}, false
+}
+
+func (w *PoolWatcher) getPoolHistory(ctx context.Context, PoolID string) ([]bfAPI.PoolHistory, error) {
+	history, ok := w.cache.Get(PoolID + "_history")
+	if !ok {
+		poolHistory, err := w.blockfrost.GetPoolHistory(ctx, PoolID)
+		if err != nil {
+			return nil, fmt.Errorf("unable to retrieve history for pool '%s': %w", PoolID, err)
+		}
+		// rewards change once per epoch
+		w.cache.SetWithTTL(PoolID+"_history", poolHistory, 1, time.Hour)
+		w.cache.Wait()
+		history = poolHistory
+	}
+	return history.([]bfAPI.PoolHistory), nil
 }
 
 func (w *PoolWatcher) getPoolRelays(ctx context.Context, PoolID string) ([]bfAPI.PoolRelay, error) {

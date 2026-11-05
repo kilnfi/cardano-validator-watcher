@@ -45,6 +45,10 @@ type Collection struct {
 	PoolNoLeaderSlotProbability       *prometheus.GaugeVec
 	PoolExcluded                      *prometheus.GaugeVec
 	PoolBlocksMinted                  *prometheus.GaugeVec
+	PoolLastEpochRewards              *prometheus.GaugeVec
+	PoolLastEpochOperatorRewards      *prometheus.GaugeVec
+	PoolLastEpochROA                  *prometheus.GaugeVec
+	PoolLastRewardedEpoch             *prometheus.GaugeVec
 	MonitoredValidatorsCount          *prometheus.GaugeVec
 	MissedBlocks                      *prometheus.CounterVec
 	ConsecutiveMissedBlocks           *prometheus.GaugeVec
@@ -235,6 +239,38 @@ func NewCollection() *Collection {
 			},
 			poolLabels(),
 		),
+		PoolLastEpochRewards: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: namespace,
+				Name:      "pool_last_epoch_rewards",
+				Help:      "Total rewards of the pool in lovelace (operator share included) for the last epoch with computed rewards",
+			},
+			poolLabels(),
+		),
+		PoolLastEpochOperatorRewards: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: namespace,
+				Name:      "pool_last_epoch_operator_rewards",
+				Help:      "Operator share (fixed cost and margin) of the rewards in lovelace for the last epoch with computed rewards",
+			},
+			poolLabels(),
+		),
+		PoolLastEpochROA: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: namespace,
+				Name:      "pool_last_epoch_roa",
+				Help:      "Annualized return of the delegators (ratio) for the last epoch with computed rewards",
+			},
+			poolLabels(),
+		),
+		PoolLastRewardedEpoch: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: namespace,
+				Name:      "pool_last_rewarded_epoch",
+				Help:      "Epoch number of the rewards exposed by the pool_last_epoch_* metrics",
+			},
+			poolLabels(),
+		),
 		MonitoredValidatorsCount: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
 				Namespace: namespace,
@@ -350,6 +386,10 @@ func (m *Collection) MustRegister(reg prometheus.Registerer) {
 	reg.MustRegister(m.PoolNoLeaderSlotProbability)
 	reg.MustRegister(m.PoolExcluded)
 	reg.MustRegister(m.PoolBlocksMinted)
+	reg.MustRegister(m.PoolLastEpochRewards)
+	reg.MustRegister(m.PoolLastEpochOperatorRewards)
+	reg.MustRegister(m.PoolLastEpochROA)
+	reg.MustRegister(m.PoolLastRewardedEpoch)
 	reg.MustRegister(m.MonitoredValidatorsCount)
 	reg.MustRegister(m.MissedBlocks)
 	reg.MustRegister(m.ConsecutiveMissedBlocks)
