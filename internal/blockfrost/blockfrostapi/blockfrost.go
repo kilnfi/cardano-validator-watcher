@@ -2,6 +2,7 @@ package blockfrostapi
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/blockfrost/blockfrost-go"
@@ -100,58 +101,38 @@ func (c *Client) GetBlockBySlot(ctx context.Context, slot int) (blockfrost.Block
 	return c.blockfrost.BlockBySlot(ctx, slot)
 }
 
-//nolint:wrapcheck
+// epochEdgeBlock returns the first ("asc") or last ("desc") block of an epoch with a single
+// sorted request. Fetching every page concurrently and taking the first/last element is both
+// expensive (~200 pages per epoch) and wrong: the concurrent pages are not returned in order.
+func (c *Client) epochEdgeBlock(ctx context.Context, epoch int, order string) (blockfrost.Block, error) {
+	hashes, err := c.blockfrost.EpochBlockDistribution(ctx, epoch, blockfrost.APIQueryParams{Count: 1, Page: 1, Order: order})
+	if err != nil {
+		return blockfrost.Block{}, fmt.Errorf("unable to list the blocks of epoch %d: %w", epoch, err)
+	}
+	if len(hashes) == 0 {
+		return blockfrost.Block{}, fmt.Errorf("no block found in epoch %d", epoch)
+	}
+	block, err := c.blockfrost.Block(ctx, hashes[0])
+	if err != nil {
+		return blockfrost.Block{}, fmt.Errorf("unable to get block %s: %w", hashes[0], err)
+	}
+	return block, nil
+}
+
 func (c *Client) GetLastBlockFromPreviousEpoch(ctx context.Context, prevEpoch int) (blockfrost.Block, error) {
-	response := c.blockfrost.EpochBlockDistributionAll(ctx, prevEpoch)
-	results := []string{}
-
-	for result := range response {
-		if result.Err != nil {
-			return blockfrost.Block{}, result.Err
-		}
-
-		results = append(results, result.Res...)
-	}
-
-	lastBlock := results[len(results)-1]
-	return c.blockfrost.Block(ctx, lastBlock)
+	return c.epochEdgeBlock(ctx, prevEpoch, "desc")
 }
 
-//nolint:wrapcheck
 func (c *Client) GetFirstBlockInEpoch(ctx context.Context, epoch int) (blockfrost.Block, error) {
-	response := c.blockfrost.EpochBlockDistributionAll(ctx, epoch)
-	results := []string{}
-
-	for result := range response {
-		if result.Err != nil {
-			return blockfrost.Block{}, result.Err
-		}
-
-		results = append(results, result.Res...)
-	}
-
-	return c.blockfrost.Block(ctx, results[0])
+	return c.epochEdgeBlock(ctx, epoch, "asc")
 }
 
-//nolint:wrapcheck
 func (c *Client) GetFirstSlotInEpoch(ctx context.Context, epoch int) (int, error) {
-	resultChan := c.blockfrost.EpochBlockDistributionAll(ctx, epoch)
-	results := []string{}
-	for result := range resultChan {
-		if result.Err != nil {
-			return 0, result.Err
-		}
-
-		results = append(results, result.Res...)
-	}
-
-	firstBlock := results[0]
-	block, err := c.blockfrost.Block(ctx, firstBlock)
+	block, err := c.epochEdgeBlock(ctx, epoch, "asc")
 	if err != nil {
 		return 0, err
 	}
-
-	return block.Slot, nil
+	return block.Slot - block.EpochSlot, nil
 }
 
 //nolint:wrapcheck

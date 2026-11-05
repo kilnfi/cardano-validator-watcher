@@ -18,8 +18,30 @@ import (
 	"github.com/kilnfi/cardano-validator-watcher/internal/slotleader"
 )
 
-// Maximum number of slots per epoch.
-const maxSlotPerEpoch = 432000
+// outcomeKind is the result of a slot the pool was leader on.
+type outcomeKind int
+
+const (
+	outcomeValidated outcomeKind = iota
+	outcomeMissed
+	outcomeOrphaned
+)
+
+// slotOutcome is the evaluated result of a leader slot, recorded once the whole slot is processed.
+type slotOutcome struct {
+	pool  pools.Pool
+	slot  int
+	kind  outcomeKind
+	block bf.Block
+}
+
+// epochCounts holds the block outcomes of a pool for the current epoch.
+type epochCounts struct {
+	validated         int
+	missed            int
+	orphaned          int
+	consecutiveMissed int
+}
 
 // BlockWatcherOptions represents the options for the block watcher.
 type BlockWatcherOptions struct {
@@ -83,20 +105,11 @@ func (w *BlockWatcher) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to initialize state: %w", err)
 	}
 
-	// Initialize metrics
-	w.initMetrics()
+	// Rebuild the counters of the current epoch before creating them: Prometheus must not
+	// see them go back to zero on a restart, or increase() based alerts would fire.
+	w.initMetrics(w.replayProcessedSlots(ctx))
 
-	// Ensure that each pool has leader slots assigned
-	if err := w.ensurePoolHasLeaderSlots(ctx); err != nil {
-		var noSlotsFound *ErrNoSlotsAssignedToPool
-		if errors.As(err, &noSlotsFound) {
-			w.logger.ErrorContext(ctx,
-				fmt.Sprintf("🚨 pool %s has no leader slots assigned. Is it a new pool ?", noSlotsFound.PoolID),
-				slog.Int("epoch", noSlotsFound.Epoch),
-			)
-			return err
-		}
-	}
+	w.warnPoolsWithoutLeaderSlots(ctx)
 
 	ticker := time.NewTicker(w.opts.RefreshInterval)
 	defer ticker.Stop()
@@ -188,14 +201,15 @@ func (w *BlockWatcher) start(ctx context.Context) error {
 			return err
 		}
 		// Reset the metrics for the new epoch
-		w.initMetrics()
+		w.initMetrics(nil)
 	}
 	return nil
 }
 
-// ensurePoolHasLeaderSlots ensures that each pool has leader slots assigned.
-// It returns an error if a pool has no leader slots assigned.
-func (w *BlockWatcher) ensurePoolHasLeaderSlots(ctx context.Context) error {
+// warnPoolsWithoutLeaderSlots logs the pools without any leader slot in the current epoch.
+// This is expected for pools with little stake, so it is not an error: expected_blocks is
+// exported as 0 and alerting decides whether it is abnormal for the pool's stake.
+func (w *BlockWatcher) warnPoolsWithoutLeaderSlots(ctx context.Context) {
 	for _, pool := range w.pools.GetActivePools() {
 		if pool.AllowEmptySlots {
 			continue
@@ -206,10 +220,13 @@ func (w *BlockWatcher) ensurePoolHasLeaderSlots(ctx context.Context) error {
 			continue
 		}
 		if empty {
-			return &ErrNoSlotsAssignedToPool{PoolID: pool.ID, Epoch: w.state.Epoch}
+			w.logger.WarnContext(ctx,
+				fmt.Sprintf("pool %s has no leader slot assigned in this epoch", pool.Name),
+				slog.String("pool_id", pool.ID),
+				slog.Int("epoch", w.state.Epoch),
+			)
 		}
 	}
-	return nil
 }
 
 // handleEpochtransition handles the epoch transition.
@@ -221,6 +238,13 @@ func (w *BlockWatcher) handleEpochtransition(ctx context.Context) error {
 		return fmt.Errorf("handleEpochTransition: failed to get latest epoch: %w", err)
 	}
 
+	// Refresh the schedule before saving the new epoch: if it fails, the state stays on the
+	// previous epoch so the transition (and the refresh) is retried on the next tick.
+	w.logger.InfoContext(ctx, "🔄 Refreshing slot leader schedule for the new epoch", slog.Int("epoch", epoch.Epoch))
+	if err := w.slotLeaderService.RefreshCurrent(ctx, epoch); err != nil {
+		return fmt.Errorf("handleEpochTransition: failed to refresh slot leader schedule for the new epoch: %w", err)
+	}
+
 	previousEpoch := w.state.Epoch
 	if err := w.state.Save(ctx, epoch.Epoch, w.state.Slot); err != nil {
 		return fmt.Errorf("handleEpochTransition: failed to save state after epoch transition: %w", err)
@@ -229,23 +253,7 @@ func (w *BlockWatcher) handleEpochtransition(ctx context.Context) error {
 	// Stop exporting the gauges of the epoch that just ended
 	w.metrics.DeleteEpochSeries(strconv.Itoa(previousEpoch))
 
-	// Update the slot leader schedule for each pool
-	w.logger.InfoContext(ctx, "🔄 Refreshing slot leader schedule for the new epoch", slog.Int("epoch", epoch.Epoch))
-	if err := w.slotLeaderService.RefreshCurrent(ctx, epoch); err != nil {
-		return fmt.Errorf("handleEpochTransition: failed to refresh slot leader schedule for the new epoch: %w", err)
-	}
-
-	// Ensure that each pool has leader slots assigned
-	if err := w.ensurePoolHasLeaderSlots(ctx); err != nil {
-		var noSlotsFound *ErrNoSlotsAssignedToPool
-		if errors.As(err, &noSlotsFound) {
-			w.logger.ErrorContext(ctx,
-				fmt.Sprintf("🚨 pool %s has no leader slots assigned. Is it a new pool ?", noSlotsFound.PoolID),
-				slog.Int("epoch", noSlotsFound.Epoch),
-			)
-			return err
-		}
-	}
+	w.warnPoolsWithoutLeaderSlots(ctx)
 
 	return nil
 }
@@ -270,17 +278,9 @@ func (w *BlockWatcher) startWatcherAndDetectEpochTransition(ctx context.Context,
 	epochTransition = block.Epoch > w.state.Epoch
 	if epochTransition {
 		w.logger.InfoContext(ctx, "🚀 A new epoch has started.", slog.Int("epoch", block.Epoch))
-		// Each epoch has a maximum of 432000 slots. However, due to reasons like empty or missed slots,
-		// an epoch might end with fewer slots. To ensure no slot is missed, we process all slots from the previous epoch.
-		//
-		// The last slot of the current epoch is calculated by adding the number of remaining slots in the previous epoch
-		// to the slot number of the last received block in the previous epoch.
-		lastBlockInPreviousEpoch, err := w.blockfrost.GetLastBlockFromPreviousEpoch(ctx, w.state.Epoch)
-		if err != nil {
-			return epochTransition, fmt.Errorf("startWatcherAndDetectEpochTransition: failed to get last block from previous epoch: %w", err)
-		}
-		remainingSlots := maxSlotPerEpoch - lastBlockInPreviousEpoch.EpochSlot
-		endSlot = lastBlockInPreviousEpoch.Slot + remainingSlots
+		// Process every remaining slot of the previous epoch, even empty ones: it ends right
+		// before the first slot of the new epoch, which is derived from the latest block.
+		endSlot = block.Slot - block.EpochSlot - 1
 	}
 
 	if startSlot <= endSlot {
@@ -317,23 +317,32 @@ func (w *BlockWatcher) processSlots(ctx context.Context, epoch int, startSlot in
 			slog.Int("epoch", epoch),
 		)
 
+		// A slot is recorded only once every pool has been evaluated: on error it is retried
+		// on the next tick instead of being skipped, and pools already evaluated are not counted twice.
+		var outcomes []slotOutcome
 		for _, pool := range w.pools.GetActivePools() {
-			err := w.processPoolSlot(ctx, epoch, pool, slot)
+			outcome, isLeader, err := w.processPoolSlot(ctx, epoch, pool, slot)
 			if err != nil {
-				return slot, err
+				return slot - 1, err
 			}
+			if isLeader {
+				outcomes = append(outcomes, outcome)
+			}
+		}
+		for _, outcome := range outcomes {
+			w.recordOutcome(ctx, epoch, outcome)
 		}
 	}
 	return endSlot, nil
 }
 
-// processSlot processes the slot for the given pool.
-// It returns an error if the slot processing fails.
-func (w *BlockWatcher) processPoolSlot(ctx context.Context, epoch int, pool pools.Pool, slot int) error {
+// processPoolSlot evaluates the slot for the given pool. It returns the outcome and true
+// when the pool was leader on the slot, without recording it.
+func (w *BlockWatcher) processPoolSlot(ctx context.Context, epoch int, pool pools.Pool, slot int) (slotOutcome, bool, error) {
 	// check if pool has slots assigned.
 	empty, err := w.slotLeaderService.IsSlotsEmpty(ctx, pool.ID, epoch)
 	if err != nil {
-		return fmt.Errorf("processPoolSlot: failed to check if pool has leader slots: %w", err)
+		return slotOutcome{}, false, fmt.Errorf("processPoolSlot: failed to check if pool has leader slots: %w", err)
 	}
 	if empty && pool.AllowEmptySlots {
 		w.logger.InfoContext(ctx,
@@ -341,19 +350,25 @@ func (w *BlockWatcher) processPoolSlot(ctx context.Context, epoch int, pool pool
 			slog.Int("epoch", epoch),
 			slog.String("pool_id", pool.ID),
 		)
-		return nil
+		return slotOutcome{}, false, nil
 	}
 
 	// check if we are leader on the slot and handle it.
 	isLeader, err := w.slotLeaderService.IsSlotLeader(ctx, pool.ID, slot, epoch)
 	if err != nil {
-		return fmt.Errorf("processPoolSlot: failed to check if pool is leader for slot: %w", err)
+		return slotOutcome{}, false, fmt.Errorf("processPoolSlot: failed to check if pool is leader for slot: %w", err)
 	}
 	if isLeader {
-		if err := w.processLeaderSlot(ctx, epoch, pool, slot); err != nil {
-			return err
+		w.logger.InfoContext(ctx,
+			fmt.Sprintf("👑 Pool %s leads slot %d", pool.Name, slot),
+			slog.Int("epoch", epoch),
+			slog.String("pool_id", pool.ID),
+		)
+		outcome, err := w.classifyLeaderSlot(ctx, pool, slot)
+		if err != nil {
+			return slotOutcome{}, false, fmt.Errorf("processPoolSlot: %w", err)
 		}
-		return nil
+		return outcome, true, nil
 	}
 
 	// We are not leader for the slot
@@ -362,35 +377,88 @@ func (w *BlockWatcher) processPoolSlot(ctx context.Context, epoch int, pool pool
 		slog.Int("epoch", epoch),
 		slog.String("pool_id", pool.ID),
 	)
-	return nil
+	return slotOutcome{}, false, nil
 }
 
-// handleSlotLeader handles the slot leader and check the state of the slot.
+// classifyLeaderSlot checks the state of a slot the pool was leader on.
 // - Leader but slot not found on-chain: Missed block
 // - Leader and slot found on-chain: Validated block
 // - Leader, slot found on-chain but not proposed by us: Orphaned block (Slot battle lost)
-// - Not leader: No action (Sleeping pool)
-func (w *BlockWatcher) processLeaderSlot(ctx context.Context, epoch int, pool pools.Pool, slot int) error {
-	w.logger.InfoContext(ctx,
-		fmt.Sprintf("👑 Pool %s leads slot %d", pool.Name, slot),
-		slog.Int("epoch", epoch),
-		slog.String("pool_id", pool.ID),
-	)
-
+func (w *BlockWatcher) classifyLeaderSlot(ctx context.Context, pool pools.Pool, slot int) (slotOutcome, error) {
 	block, err := w.blockfrost.GetBlockBySlot(ctx, slot)
 	switch {
 	case err != nil:
 		if strings.Contains(strings.ToLower(err.Error()), "not found") {
-			w.logMissedBlock(ctx, pool, slot, epoch)
-		} else {
-			return fmt.Errorf("processLeaderSlot: failed to fetch block on slot %d: %w", slot, err)
+			return slotOutcome{pool: pool, slot: slot, kind: outcomeMissed}, nil
 		}
+		return slotOutcome{}, fmt.Errorf("failed to fetch block on slot %d: %w", slot, err)
 	case block.SlotLeader == pool.ID:
-		w.logValidatedBlock(ctx, pool, slot, epoch, block)
+		return slotOutcome{pool: pool, slot: slot, kind: outcomeValidated, block: block}, nil
 	default:
-		w.logOrphanedBlock(ctx, pool, slot, epoch, block)
+		return slotOutcome{pool: pool, slot: slot, kind: outcomeOrphaned, block: block}, nil
 	}
-	return nil
+}
+
+// recordOutcome updates the metrics and logs for a leader slot outcome.
+func (w *BlockWatcher) recordOutcome(ctx context.Context, epoch int, outcome slotOutcome) {
+	switch outcome.kind {
+	case outcomeMissed:
+		w.logMissedBlock(ctx, outcome.pool, outcome.slot, epoch)
+	case outcomeValidated:
+		w.logValidatedBlock(ctx, outcome.pool, outcome.slot, epoch, outcome.block)
+	case outcomeOrphaned:
+		w.logOrphanedBlock(ctx, outcome.pool, outcome.slot, epoch, outcome.block)
+	}
+}
+
+// replayProcessedSlots rebuilds the block counters of the current epoch after a restart by
+// classifying again the leader slots already processed (up to the slot saved in the state).
+// The counters only live in memory: without this, a restart in the middle of an epoch loses
+// the blocks counted so far. It is best effort: on error the pool starts from zero, as before.
+func (w *BlockWatcher) replayProcessedSlots(ctx context.Context) map[string]epochCounts {
+	counts := make(map[string]epochCounts)
+	for _, pool := range w.pools.GetActivePools() {
+		poolCounts, err := w.replayPoolSlots(ctx, pool)
+		if err != nil {
+			w.logger.WarnContext(ctx, "unable to rebuild the block counters of the epoch, starting from zero",
+				slog.String("pool_id", pool.ID),
+				slog.Int("epoch", w.state.Epoch),
+				slog.String("error", err.Error()),
+			)
+			continue
+		}
+		counts[pool.ID] = poolCounts
+	}
+	return counts
+}
+
+func (w *BlockWatcher) replayPoolSlots(ctx context.Context, pool pools.Pool) (epochCounts, error) {
+	var counts epochCounts
+	schedule, err := w.slotLeaderService.GetSlotLeaders(ctx, pool.ID, w.state.Epoch)
+	if err != nil {
+		return counts, fmt.Errorf("unable to get slot leaders: %w", err)
+	}
+
+	for _, slot := range schedule.Slots {
+		if slot > w.state.Slot {
+			continue
+		}
+		outcome, err := w.classifyLeaderSlot(ctx, pool, slot)
+		if err != nil {
+			return epochCounts{}, err
+		}
+		switch outcome.kind {
+		case outcomeMissed:
+			counts.missed++
+			counts.consecutiveMissed++
+		case outcomeValidated:
+			counts.validated++
+			counts.consecutiveMissed = 0
+		case outcomeOrphaned:
+			counts.orphaned++
+		}
+	}
+	return counts, nil
 }
 
 // logMissedBlock records a missed block in metrics and logs the occurrence.
@@ -460,16 +528,19 @@ func (w *BlockWatcher) fetchAndLogNextSlotLeaders(ctx context.Context, block bf.
 	return nil
 }
 
-// initMetrics initializes the metrics for the block watcher.
-func (w *BlockWatcher) initMetrics() {
+// initMetrics initializes the block metrics of the current epoch, starting from the given
+// counts (nil or a missing pool means zero).
+func (w *BlockWatcher) initMetrics(counts map[string]epochCounts) {
 	w.metrics.MissedBlocks.Reset()
 	w.metrics.ValidatedBlocks.Reset()
 	w.metrics.OrphanedBlocks.Reset()
 
+	epoch := strconv.Itoa(w.state.Epoch)
 	for _, pool := range w.pools.GetActivePools() {
-		w.metrics.MissedBlocks.WithLabelValues(pool.Name, pool.ID, pool.Instance, strconv.Itoa(w.state.Epoch)).Add(0)
-		w.metrics.ConsecutiveMissedBlocks.WithLabelValues(pool.Name, pool.ID, pool.Instance, strconv.Itoa(w.state.Epoch)).Add(0)
-		w.metrics.ValidatedBlocks.WithLabelValues(pool.Name, pool.ID, pool.Instance, strconv.Itoa(w.state.Epoch)).Add(0)
-		w.metrics.OrphanedBlocks.WithLabelValues(pool.Name, pool.ID, pool.Instance, strconv.Itoa(w.state.Epoch)).Add(0)
+		c := counts[pool.ID]
+		w.metrics.MissedBlocks.WithLabelValues(pool.Name, pool.ID, pool.Instance, epoch).Add(float64(c.missed))
+		w.metrics.ConsecutiveMissedBlocks.WithLabelValues(pool.Name, pool.ID, pool.Instance, epoch).Set(float64(c.consecutiveMissed))
+		w.metrics.ValidatedBlocks.WithLabelValues(pool.Name, pool.ID, pool.Instance, epoch).Add(float64(c.validated))
+		w.metrics.OrphanedBlocks.WithLabelValues(pool.Name, pool.ID, pool.Instance, epoch).Add(float64(c.orphaned))
 	}
 }

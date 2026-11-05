@@ -12,9 +12,15 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
 	"github.com/kilnfi/cardano-validator-watcher/internal/pools"
+	"github.com/kilnfi/cardano-validator-watcher/internal/slotleader"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
+
+// expectNoReplay lets the startup replay of the processed leader slots find an empty schedule.
+func expectNoReplay(c *clients) {
+	c.sl.EXPECT().GetSlotLeaders(mock.Anything, mock.Anything, mock.Anything).Return(slotleader.Schedule{}, nil).Maybe()
+}
 
 func setupPool() pools.Pools {
 	return pools.Pools{
@@ -35,6 +41,7 @@ func TestBlockWatcher_Start(t *testing.T) {
 		t.Parallel()
 
 		clients := setupClients(t)
+		expectNoReplay(clients)
 		mockDBClient := setupDB(t)
 		registry := setupRegistry(t)
 
@@ -62,13 +69,13 @@ func TestBlockWatcher_Start(t *testing.T) {
 		clients.bf.EXPECT().
 			GetFirstBlockInEpoch(ctx, currentEpoch).
 			Return(
-				blockfrost.Block{Epoch: currentEpoch, Slot: 1},
+				blockfrost.Block{Epoch: currentEpoch, Slot: 1, EpochSlot: 0},
 				nil,
 			)
 
 		mockDBClient.mock.
 			ExpectExec("INSERT OR REPLACE INTO block_watcher_state (id, epoch, slot, last_update) VALUES (1, ?, ?, ?)").
-			WithArgs(currentEpoch, 1, AnyTime{}).
+			WithArgs(currentEpoch, 0, AnyTime{}).
 			WillReturnResult(sqlmock.NewResult(1, 1))
 
 		clients.sl.EXPECT().
@@ -99,6 +106,7 @@ func TestBlockWatcher_Start(t *testing.T) {
 		t.Parallel()
 
 		clients := setupClients(t)
+		expectNoReplay(clients)
 		mockDBClient := setupDB(t)
 		registry := setupRegistry(t)
 
@@ -194,6 +202,7 @@ func TestBlockWatcher_Start(t *testing.T) {
 		t.Parallel()
 
 		clients := setupClients(t)
+		expectNoReplay(clients)
 		mockDBClient := setupDB(t)
 		registry := setupRegistry(t)
 
@@ -326,6 +335,7 @@ cardano_validator_watcher_validated_blocks_total{epoch="100", pool_id="pool-0", 
 		t.Parallel()
 
 		clients := setupClients(t)
+		expectNoReplay(clients)
 		mockDBClient := setupDB(t)
 		registry := setupRegistry(t)
 
@@ -451,6 +461,7 @@ cardano_validator_watcher_validated_blocks_total{epoch="100", pool_id="pool-0", 
 		t.Parallel()
 
 		clients := setupClients(t)
+		expectNoReplay(clients)
 		mockDBClient := setupDB(t)
 		registry := setupRegistry(t)
 
@@ -581,6 +592,7 @@ cardano_validator_watcher_orphaned_blocks_total{epoch="100", pool_id="pool-0", p
 		t.Parallel()
 
 		clients := setupClients(t)
+		expectNoReplay(clients)
 		mockDBClient := setupDB(t)
 		registry := setupRegistry(t)
 
@@ -699,6 +711,7 @@ cardano_validator_watcher_consecutive_missed_blocks{epoch="100", pool_id="pool-0
 		t.Parallel()
 
 		clients := setupClients(t)
+		expectNoReplay(clients)
 		mockDBClient := setupDB(t)
 		registry := setupRegistry(t)
 
@@ -823,6 +836,7 @@ cardano_validator_watcher_validated_blocks_total{epoch="100", pool_id="pool-0", 
 		t.Parallel()
 
 		clients := setupClients(t)
+		expectNoReplay(clients)
 		mockDBClient := setupDB(t)
 		registry := setupRegistry(t)
 
@@ -846,7 +860,6 @@ cardano_validator_watcher_validated_blocks_total{epoch="101",pool_id="pool-0",po
 		epoch := 100
 		initialSlot := 99
 		currentSlot := 100
-		currentHeight := 100
 		nextEpoch := 101
 		nextEpochSlot := 102
 		nextEpochHeight := 102
@@ -885,18 +898,6 @@ cardano_validator_watcher_validated_blocks_total{epoch="101",pool_id="pool-0",po
 				},
 				nil,
 			)
-
-		// retrieve the latest block from the previous epoch and calculate the last slot of the previous epoch
-		clients.bf.EXPECT().
-			GetLastBlockFromPreviousEpoch(mock.Anything, epoch).Return(
-			blockfrost.Block{
-				Height:    currentHeight,
-				Slot:      currentSlot,
-				Epoch:     epoch,
-				EpochSlot: 431999,
-			},
-			nil,
-		)
 
 		// handle currentSlot
 		clients.sl.EXPECT().
@@ -1020,10 +1021,11 @@ cardano_validator_watcher_validated_blocks_total{epoch="101",pool_id="pool-0",po
 		require.NoError(t, err)
 	})
 
-	t.Run("SadPath_PoolWithNoLeaderSlotsAssigned", func(t *testing.T) {
+	t.Run("GoodPath_PoolWithNoLeaderSlotsDoesNotStopTheWatcher", func(t *testing.T) {
 		t.Parallel()
 
 		clients := setupClients(t)
+		expectNoReplay(clients)
 		mockDBClient := setupDB(t)
 		registry := setupRegistry(t)
 
@@ -1066,7 +1068,7 @@ cardano_validator_watcher_validated_blocks_total{epoch="101",pool_id="pool-0",po
 			options,
 		)
 		err := watcher.Start(ctx)
-		require.ErrorContains(t, err, "has no slots assigned for epoch")
+		require.ErrorIs(t, err, context.Canceled)
 		require.Equal(t, watcher.state.Slot, initialSlot)
 	})
 
@@ -1074,6 +1076,7 @@ cardano_validator_watcher_validated_blocks_total{epoch="101",pool_id="pool-0",po
 		t.Parallel()
 
 		clients := setupClients(t)
+		expectNoReplay(clients)
 		mockDBClient := setupDB(t)
 		registry := setupRegistry(t)
 
@@ -1162,6 +1165,7 @@ cardano_validator_watcher_validated_blocks_total{epoch="101",pool_id="pool-0",po
 		t.Parallel()
 
 		clients := setupClients(t)
+		expectNoReplay(clients)
 		mockDBClient := setupDB(t)
 		registry := setupRegistry(t)
 
@@ -1208,4 +1212,109 @@ cardano_validator_watcher_validated_blocks_total{epoch="101",pool_id="pool-0",po
 		require.ErrorIs(t, err, context.Canceled)
 		require.Equal(t, watcher.state.Slot, initialSlot)
 	})
+}
+
+func TestBlockWatcher_ReplayProcessedSlotsOnStart(t *testing.T) {
+	t.Parallel()
+	pool := setupPool()
+
+	clients := setupClients(t)
+	mockDBClient := setupDB(t)
+	registry := setupRegistry(t)
+
+	// the counters of the epoch are rebuilt from the leader slots already processed (<= 200),
+	// in order: validated, missed, orphaned. Slot 250 is not processed yet and is ignored.
+	registry.metricsExpectedOutput = `
+# HELP cardano_validator_watcher_consecutive_missed_blocks number of consecutive missed blocks in a row
+# TYPE cardano_validator_watcher_consecutive_missed_blocks gauge
+cardano_validator_watcher_consecutive_missed_blocks{epoch="100",pool_id="pool-0",pool_instance="pool-0",pool_name="pool-0"} 1
+# HELP cardano_validator_watcher_missed_blocks_total number of missed blocks in the current epoch
+# TYPE cardano_validator_watcher_missed_blocks_total counter
+cardano_validator_watcher_missed_blocks_total{epoch="100",pool_id="pool-0",pool_instance="pool-0",pool_name="pool-0"} 1
+# HELP cardano_validator_watcher_orphaned_blocks_total number of orphaned blocks in the current epoch
+# TYPE cardano_validator_watcher_orphaned_blocks_total counter
+cardano_validator_watcher_orphaned_blocks_total{epoch="100",pool_id="pool-0",pool_instance="pool-0",pool_name="pool-0"} 1
+# HELP cardano_validator_watcher_validated_blocks_total number of validated blocks in the current epoch
+# TYPE cardano_validator_watcher_validated_blocks_total counter
+cardano_validator_watcher_validated_blocks_total{epoch="100",pool_id="pool-0",pool_instance="pool-0",pool_name="pool-0"} 1
+`
+	registry.metricsUnderTest = []string{
+		"cardano_validator_watcher_consecutive_missed_blocks",
+		"cardano_validator_watcher_missed_blocks_total",
+		"cardano_validator_watcher_orphaned_blocks_total",
+		"cardano_validator_watcher_validated_blocks_total",
+	}
+
+	epoch := 100
+	slotInState := 200
+
+	ctx := setupContextWithTimeout(t, time.Second*5)
+
+	clients.bf.EXPECT().GetLatestEpoch(mock.Anything).Return(blockfrost.Epoch{Epoch: epoch}, nil)
+	mockDBClient.mock.
+		ExpectQuery("SELECT epoch, slot, last_update FROM block_watcher_state LIMIT 1").
+		WillReturnRows(sqlmock.NewRows([]string{"epoch", "slot", "last_update"}).AddRow(epoch, slotInState, time.Now()))
+
+	clients.sl.EXPECT().
+		GetSlotLeaders(mock.Anything, pool[0].ID, epoch).
+		Return(slotleader.Schedule{Slots: []int{150, 180, 190, 250}}, nil)
+	clients.bf.EXPECT().GetBlockBySlot(mock.Anything, 150).Return(blockfrost.Block{SlotLeader: pool[0].ID}, nil)
+	clients.bf.EXPECT().GetBlockBySlot(mock.Anything, 180).Return(blockfrost.Block{}, errors.New("Not Found"))
+	clients.bf.EXPECT().GetBlockBySlot(mock.Anything, 190).Return(blockfrost.Block{SlotLeader: "another-pool"}, nil)
+	clients.sl.EXPECT().IsSlotsEmpty(mock.Anything, pool[0].ID, epoch).Return(false, nil)
+
+	healthStore := NewHealthStore()
+	healthStore.SetHealth(false)
+	watcher := NewBlockWatcher(clients.cardano, clients.bf, clients.sl, pool, registry.metrics, mockDBClient.db, healthStore,
+		BlockWatcherOptions{RefreshInterval: time.Minute})
+
+	err := watcher.Start(ctx)
+	require.ErrorIs(t, err, context.Canceled)
+
+	b := bytes.NewBufferString(registry.metricsExpectedOutput)
+	require.NoError(t, testutil.GatherAndCompare(registry.registry, b, registry.metricsUnderTest...))
+}
+
+func TestBlockWatcher_FailedLeaderSlotIsRetried(t *testing.T) {
+	t.Parallel()
+	pool := setupPool()
+
+	clients := setupClients(t)
+	expectNoReplay(clients)
+	mockDBClient := setupDB(t)
+	registry := setupRegistry(t)
+
+	epoch := 100
+	slotInState := 99
+	leaderSlot := 100
+
+	ctx := setupContextWithTimeout(t, time.Second*5)
+
+	clients.bf.EXPECT().GetLatestEpoch(mock.Anything).Return(blockfrost.Epoch{Epoch: epoch}, nil)
+	mockDBClient.mock.
+		ExpectQuery("SELECT epoch, slot, last_update FROM block_watcher_state LIMIT 1").
+		WillReturnRows(sqlmock.NewRows([]string{"epoch", "slot", "last_update"}).AddRow(epoch, slotInState, time.Now()))
+	clients.sl.EXPECT().IsSlotsEmpty(mock.Anything, pool[0].ID, epoch).Return(false, nil)
+	clients.sl.EXPECT().GetNextSlotLeader(mock.Anything, pool[0].ID, leaderSlot, epoch).Return(0, nil)
+	clients.bf.EXPECT().GetLatestBlock(mock.Anything).
+		Return(blockfrost.Block{Height: leaderSlot, Slot: leaderSlot, Epoch: epoch, EpochSlot: 50}, nil)
+	clients.sl.EXPECT().IsSlotLeader(mock.Anything, pool[0].ID, leaderSlot, epoch).Return(true, nil)
+	clients.bf.EXPECT().GetBlockBySlot(mock.Anything, leaderSlot).Return(blockfrost.Block{}, errors.New("HTTP 500"))
+
+	// the failed slot is not saved as processed: it is retried on the next tick
+	mockDBClient.mock.
+		ExpectExec("INSERT OR REPLACE INTO block_watcher_state (id, epoch, slot, last_update) VALUES (1, ?, ?, ?)").
+		WithArgs(epoch, slotInState, AnyTime{}).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	healthStore := NewHealthStore()
+	healthStore.SetHealth(true)
+	watcher := NewBlockWatcher(clients.cardano, clients.bf, clients.sl, pool, registry.metrics, mockDBClient.db, healthStore,
+		BlockWatcherOptions{RefreshInterval: time.Minute})
+
+	err := watcher.Start(ctx)
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, slotInState, watcher.state.Slot)
+	require.InDelta(t, 0, testutil.ToFloat64(registry.metrics.MissedBlocks.WithLabelValues(pool[0].Name, pool[0].ID, pool[0].Instance, "100")), 0)
+	require.InDelta(t, 0, testutil.ToFloat64(registry.metrics.ValidatedBlocks.WithLabelValues(pool[0].Name, pool[0].ID, pool[0].Instance, "100")), 0)
 }
