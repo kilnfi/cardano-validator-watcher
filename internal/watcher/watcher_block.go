@@ -122,6 +122,9 @@ func (w *BlockWatcher) Start(ctx context.Context) error {
 
 		if currentHealthStatus {
 			err := w.start(ctx)
+			if err == nil {
+				w.metrics.LastSuccess.WithLabelValues("block-watcher").SetToCurrentTime()
+			}
 			if err != nil {
 				var slotLeaderRefreshError *slotleader.ErrSlotLeaderRefresh
 				if errors.As(err, &slotLeaderRefreshError) {
@@ -306,7 +309,7 @@ func (w *BlockWatcher) startWatcherAndDetectEpochTransition(ctx context.Context,
 // processSlots processes the slots and checks if the pool is a leader.
 func (w *BlockWatcher) processSlots(ctx context.Context, epoch int, startSlot int, endSlot int) (int, error) {
 	for slot := startSlot; slot <= endSlot; slot++ {
-		w.logger.InfoContext(ctx,
+		w.logger.DebugContext(ctx,
 			fmt.Sprintf(
 				"🔍 Processing slot %d - 🔑 Monitoring %d pools (%d active, %d excluded)",
 				slot,
@@ -345,7 +348,7 @@ func (w *BlockWatcher) processPoolSlot(ctx context.Context, epoch int, pool pool
 		return slotOutcome{}, false, fmt.Errorf("processPoolSlot: failed to check if pool has leader slots: %w", err)
 	}
 	if empty && pool.AllowEmptySlots {
-		w.logger.InfoContext(ctx,
+		w.logger.DebugContext(ctx,
 			fmt.Sprintf("🦄 pool %s has no leader slots assigned but allow empty slots is enabled", pool.Name),
 			slog.Int("epoch", epoch),
 			slog.String("pool_id", pool.ID),
@@ -372,7 +375,7 @@ func (w *BlockWatcher) processPoolSlot(ctx context.Context, epoch int, pool pool
 	}
 
 	// We are not leader for the slot
-	w.logger.InfoContext(ctx,
+	w.logger.DebugContext(ctx,
 		fmt.Sprintf("😴 pool %s is not a leader for slot %d", pool.Name, slot),
 		slog.Int("epoch", epoch),
 		slog.String("pool_id", pool.ID),
@@ -518,7 +521,7 @@ func (w *BlockWatcher) fetchAndLogNextSlotLeaders(ctx context.Context, block bf.
 			remainingSlots = nextSlot - block.Slot
 		}
 
-		w.logger.InfoContext(ctx,
+		w.logger.DebugContext(ctx,
 			fmt.Sprintf("🕰  Next slot leader for pool %s is slot %d, remaining slots: %d", pool.Name, nextSlot, remainingSlots),
 			slog.String("pool_id", pool.ID),
 			slog.Int("epoch", w.state.Epoch),

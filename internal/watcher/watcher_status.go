@@ -17,28 +17,47 @@ const (
 	DefaultRefreshInterval = 15 * time.Second
 )
 
+// HealthStore holds the health of the dependencies of the watcher.
 type HealthStore struct {
 	mu sync.RWMutex
 
-	health bool
+	blockfrost  bool
+	cardanoNode bool
 }
 
 func NewHealthStore() *HealthStore {
 	return &HealthStore{}
 }
 
+// SetHealth sets the health of every dependency.
 func (r *HealthStore) SetHealth(health bool) {
+	r.SetDependencies(health, health)
+}
+
+// SetDependencies records the health of each dependency.
+func (r *HealthStore) SetDependencies(blockfrost, cardanoNode bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	r.health = health
+	r.blockfrost = blockfrost
+	r.cardanoNode = cardanoNode
 }
 
+// GetHealth reports whether every dependency is healthy.
 func (r *HealthStore) GetHealth() bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	return r.health
+	return r.blockfrost && r.cardanoNode
+}
+
+// IsBlockfrostHealthy reports whether Blockfrost is healthy. It is enough for the
+// watchers that only read Blockfrost: they keep running when the cardano node is down.
+func (r *HealthStore) IsBlockfrostHealthy() bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	return r.blockfrost
 }
 
 type StatusWatcher struct {
@@ -113,13 +132,10 @@ func (w *StatusWatcher) checkStatus(ctx context.Context) {
 		w.logger.ErrorContext(ctx, "Cardano node is not responding", slog.String("error", err.Error()))
 	}
 
-	if !status.IsHealthy || !isConnected {
-		w.metrics.HealthStatus.Set(0)
-		w.healthStore.SetHealth(false)
-	} else {
-		w.metrics.HealthStatus.Set(1)
-		w.healthStore.SetHealth(true)
-	}
+	w.healthStore.SetDependencies(status.IsHealthy, isConnected)
+	w.metrics.DependencyUp.WithLabelValues("blockfrost").Set(boolToFloat(status.IsHealthy))
+	w.metrics.DependencyUp.WithLabelValues("cardano_node").Set(boolToFloat(isConnected))
+	w.metrics.HealthStatus.Set(boolToFloat(status.IsHealthy && isConnected))
 }
 
 // checkCardanoNodeConnection checks the connection to the cardano-node socket.
@@ -129,4 +145,11 @@ func (w *StatusWatcher) checkCardanoNodeConnection(ctx context.Context) (bool, e
 		return false, fmt.Errorf("unable to connect to cardano node: %w", err)
 	}
 	return true, nil
+}
+
+func boolToFloat(b bool) float64 {
+	if b {
+		return 1
+	}
+	return 0
 }

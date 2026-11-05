@@ -49,6 +49,8 @@ type Collection struct {
 	PoolLastEpochOperatorRewards      *prometheus.GaugeVec
 	PoolLastEpochROA                  *prometheus.GaugeVec
 	PoolLastRewardedEpoch             *prometheus.GaugeVec
+	DependencyUp                      *prometheus.GaugeVec
+	LastSuccess                       *prometheus.GaugeVec
 	MonitoredValidatorsCount          *prometheus.GaugeVec
 	MissedBlocks                      *prometheus.CounterVec
 	ConsecutiveMissedBlocks           *prometheus.GaugeVec
@@ -271,6 +273,22 @@ func NewCollection() *Collection {
 			},
 			poolLabels(),
 		),
+		DependencyUp: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: namespace,
+				Name:      "dependency_up",
+				Help:      "Health of each dependency of the watcher (blockfrost, cardano_node): 1 = healthy, 0 = unhealthy",
+			},
+			[]string{"dependency"},
+		),
+		LastSuccess: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: namespace,
+				Name:      "last_success_timestamp_seconds",
+				Help:      "Unix time of the last successful run of each component: an old value means its metrics are frozen",
+			},
+			[]string{"component"},
+		),
 		MonitoredValidatorsCount: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
 				Namespace: namespace,
@@ -390,6 +408,8 @@ func (m *Collection) MustRegister(reg prometheus.Registerer) {
 	reg.MustRegister(m.PoolLastEpochOperatorRewards)
 	reg.MustRegister(m.PoolLastEpochROA)
 	reg.MustRegister(m.PoolLastRewardedEpoch)
+	reg.MustRegister(m.DependencyUp)
+	reg.MustRegister(m.LastSuccess)
 	reg.MustRegister(m.MonitoredValidatorsCount)
 	reg.MustRegister(m.MissedBlocks)
 	reg.MustRegister(m.ConsecutiveMissedBlocks)

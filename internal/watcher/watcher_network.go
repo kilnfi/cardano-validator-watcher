@@ -22,12 +22,18 @@ type NetworkWatcherOptions struct {
 }
 
 // NetworkWatcher represents a network watcher
+// networkPoolsRefreshInterval is how often the number of pools of the network is refreshed.
+const networkPoolsRefreshInterval = 24 * time.Hour
+
 type NetworkWatcher struct {
 	logger      *slog.Logger
 	blockfrost  blockfrost.Client
 	metrics     *metrics.Collection
 	healthStore *HealthStore
 	opts        NetworkWatcherOptions
+
+	networkPools   int
+	poolsFetchedAt time.Time
 }
 
 var _ Watcher = (*NetworkWatcher)(nil)
@@ -59,13 +65,15 @@ func (w *NetworkWatcher) Start(ctx context.Context) error {
 
 	var previousHealthStatus bool
 	for {
-		currentHealthStatus := w.healthStore.GetHealth()
+		currentHealthStatus := w.healthStore.IsBlockfrostHealthy()
 		w.handleHealthTransition(ctx, previousHealthStatus, currentHealthStatus)
 		previousHealthStatus = currentHealthStatus
 
 		if currentHealthStatus {
 			if err := w.start(ctx); err != nil {
 				w.logger.ErrorContext(ctx, "watcher started but failed with the following error", slog.String("error", err.Error()))
+			} else {
+				w.metrics.LastSuccess.WithLabelValues("network-watcher").SetToCurrentTime()
 			}
 		}
 
@@ -101,7 +109,7 @@ func (w *NetworkWatcher) start(ctx context.Context) error {
 // is not ready, or an info message if it is ready.
 func (w *NetworkWatcher) handleHealthTransition(ctx context.Context, previous bool, current bool) {
 	if previous != current {
-		if !w.healthStore.GetHealth() {
+		if !current {
 			w.logger.WarnContext(ctx,
 				"💔 network watcher is not ready.",
 			)
@@ -126,11 +134,16 @@ func (w *NetworkWatcher) collectChainInfo(ctx context.Context) error {
 
 // collectNetworkInfo collects information about the network
 func (w *NetworkWatcher) collectNetworkInfo(ctx context.Context) error {
-	pools, err := w.blockfrost.GetAllPools(ctx)
-	if err != nil {
-		return fmt.Errorf("unable to retrieve pools: %w", err)
+	// Listing every pool takes ~30 paginated requests and barely changes: refresh it once a day
+	if w.poolsFetchedAt.IsZero() || time.Since(w.poolsFetchedAt) >= networkPoolsRefreshInterval {
+		pools, err := w.blockfrost.GetAllPools(ctx)
+		if err != nil {
+			return fmt.Errorf("unable to retrieve pools: %w", err)
+		}
+		w.networkPools = len(pools)
+		w.poolsFetchedAt = time.Now()
 	}
-	w.metrics.NetworkTotalPools.Set(float64(len(pools)))
+	w.metrics.NetworkTotalPools.Set(float64(w.networkPools))
 
 	networkInfo, err := w.blockfrost.GetNetworkInfo(ctx)
 	if err != nil {

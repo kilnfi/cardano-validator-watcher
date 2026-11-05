@@ -83,13 +83,15 @@ func (w *PoolWatcher) Start(ctx context.Context) error {
 
 	var previousHealthStatus bool
 	for {
-		currentHealthStatus := w.healthStore.GetHealth()
+		currentHealthStatus := w.healthStore.IsBlockfrostHealthy()
 		w.handleHealthTransition(ctx, previousHealthStatus, currentHealthStatus)
 		previousHealthStatus = currentHealthStatus
 
 		if currentHealthStatus {
 			if err := w.fetch(ctx); err != nil {
 				w.logger.ErrorContext(ctx, "unable to fetch pool data", slog.String("error", err.Error()))
+			} else {
+				w.metrics.LastSuccess.WithLabelValues("pool-watcher").SetToCurrentTime()
 			}
 		}
 
@@ -108,7 +110,7 @@ func (w *PoolWatcher) Start(ctx context.Context) error {
 // is not ready, or an info message if it is ready.
 func (w *PoolWatcher) handleHealthTransition(ctx context.Context, previous bool, current bool) {
 	if previous != current {
-		if !w.healthStore.GetHealth() {
+		if !current {
 			w.logger.WarnContext(ctx,
 				"💔 pool watcher is not ready.",
 			)
