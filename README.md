@@ -99,7 +99,6 @@ pools:
     name: "pool-1"
     key: "config/pool-1.vrf.skey"
     exclude: true
-    allow-empty-slots: true
 network: "mainnet"
 block-watcher:
   enabled: true
@@ -142,7 +141,6 @@ cardano:
 | `name`                    | Name of the pool                                          | `"pool-0"`                                                          |
 | `key`                     | Path to the key file                                      | `"config/pool-0.vrf.skey"`                                          |
 | `exclude`                 | Exclude the pool from block monitoring. It stays visible through `pool_excluded`, `pool_blocks_minted` and the leader slot odds, so an alert can catch an excluded pool that produces | `true`                                                              |
-| `allow-empty-slots`       | Do not log a warning when the pool has no leader slot. A pool without leader slot no longer stops the watcher: `expected_blocks` is 0 and `pool_no_leader_slot_probability` tells whether it is abnormal | `false`                                          |
 
 
 ### Global Settings

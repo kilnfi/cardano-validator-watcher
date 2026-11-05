@@ -9,7 +9,6 @@ pools:
     name: pool_name
     key: config/pool_name.vrf.skey
     exclude: true
-    allow-empty-slots: true
 network: mainnet
 block-watcher:
   enabled: true
