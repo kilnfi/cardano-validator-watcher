@@ -109,7 +109,7 @@ func (w *BlockWatcher) Start(ctx context.Context) error {
 	// see them go back to zero on a restart, or increase() based alerts would fire.
 	w.initMetrics(w.replayProcessedSlots(ctx))
 
-	w.warnPoolsWithoutLeaderSlots(ctx)
+	w.logPoolsWithoutLeaderSlots(ctx)
 
 	ticker := time.NewTicker(w.opts.RefreshInterval)
 	defer ticker.Stop()
@@ -209,21 +209,18 @@ func (w *BlockWatcher) start(ctx context.Context) error {
 	return nil
 }
 
-// warnPoolsWithoutLeaderSlots logs the pools without any leader slot in the current epoch.
+// logPoolsWithoutLeaderSlots logs the pools without any leader slot in the current epoch.
 // This is expected for pools with little stake, so it is not an error: expected_blocks is
-// exported as 0 and alerting decides whether it is abnormal for the pool's stake.
-func (w *BlockWatcher) warnPoolsWithoutLeaderSlots(ctx context.Context) {
+// exported as 0 and pool_no_leader_slot_probability tells whether it is abnormal.
+func (w *BlockWatcher) logPoolsWithoutLeaderSlots(ctx context.Context) {
 	for _, pool := range w.pools.GetActivePools() {
-		if pool.AllowEmptySlots {
-			continue
-		}
 		empty, err := w.slotLeaderService.IsSlotsEmpty(ctx, pool.ID, w.state.Epoch)
 		if err != nil {
 			w.logger.ErrorContext(ctx, "failed to check if pool has leader slots", slog.String("pool_id", pool.ID), slog.String("error", err.Error()))
 			continue
 		}
 		if empty {
-			w.logger.WarnContext(ctx,
+			w.logger.InfoContext(ctx,
 				fmt.Sprintf("pool %s has no leader slot assigned in this epoch", pool.Name),
 				slog.String("pool_id", pool.ID),
 				slog.Int("epoch", w.state.Epoch),
@@ -256,7 +253,7 @@ func (w *BlockWatcher) handleEpochtransition(ctx context.Context) error {
 	// Stop exporting the gauges of the epoch that just ended
 	w.metrics.DeleteEpochSeries(strconv.Itoa(previousEpoch))
 
-	w.warnPoolsWithoutLeaderSlots(ctx)
+	w.logPoolsWithoutLeaderSlots(ctx)
 
 	return nil
 }
@@ -347,9 +344,9 @@ func (w *BlockWatcher) processPoolSlot(ctx context.Context, epoch int, pool pool
 	if err != nil {
 		return slotOutcome{}, false, fmt.Errorf("processPoolSlot: failed to check if pool has leader slots: %w", err)
 	}
-	if empty && pool.AllowEmptySlots {
+	if empty {
 		w.logger.DebugContext(ctx,
-			fmt.Sprintf("🦄 pool %s has no leader slots assigned but allow empty slots is enabled", pool.Name),
+			fmt.Sprintf("pool %s has no leader slot assigned in this epoch", pool.Name),
 			slog.Int("epoch", epoch),
 			slog.String("pool_id", pool.ID),
 		)
@@ -504,9 +501,6 @@ func (w *BlockWatcher) logOrphanedBlock(ctx context.Context, pool pools.Pool, sl
 // and expose the next slot leader as a metric.
 func (w *BlockWatcher) fetchAndLogNextSlotLeaders(ctx context.Context, block bf.Block) error {
 	for _, pool := range w.pools.GetActivePools() {
-		if pool.AllowEmptySlots {
-			continue
-		}
 		var remainingSlots int
 		nextSlot, err := w.slotLeaderService.GetNextSlotLeader(ctx, pool.ID, block.Slot, w.state.Epoch)
 		if err != nil {

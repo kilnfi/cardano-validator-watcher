@@ -3,12 +3,11 @@ package pools
 type Pools []Pool
 
 type Pool struct {
-	ID              string `mapstructure:"id"`
-	Instance        string `mapstructure:"instance"`
-	Name            string `mapstructure:"name"`
-	Key             string `mapstructure:"key"`
-	Exclude         bool   `mapstructure:"exclude"`
-	AllowEmptySlots bool   `mapstructure:"allow-empty-slots"`
+	ID       string `mapstructure:"id"`
+	Instance string `mapstructure:"instance"`
+	Name     string `mapstructure:"name"`
+	Key      string `mapstructure:"key"`
+	Exclude  bool   `mapstructure:"exclude"`
 }
 
 type PoolStats struct {

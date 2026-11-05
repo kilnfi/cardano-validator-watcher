@@ -9,28 +9,25 @@ import (
 var (
 	defaultPools = Pools{
 		{
-			Instance:        "pool1",
-			ID:              "pool1",
-			Name:            "pool1",
-			Key:             "pool1",
-			Exclude:         false,
-			AllowEmptySlots: false,
+			Instance: "pool1",
+			ID:       "pool1",
+			Name:     "pool1",
+			Key:      "pool1",
+			Exclude:  false,
 		},
 		{
-			Instance:        "pool2",
-			ID:              "pool2",
-			Name:            "pool2",
-			Key:             "pool2",
-			Exclude:         false,
-			AllowEmptySlots: true,
+			Instance: "pool2",
+			ID:       "pool2",
+			Name:     "pool2",
+			Key:      "pool2",
+			Exclude:  false,
 		},
 		{
-			Instance:        "pool3",
-			ID:              "pool3",
-			Name:            "pool3",
-			Key:             "pool3",
-			Exclude:         true,
-			AllowEmptySlots: false,
+			Instance: "pool3",
+			ID:       "pool3",
+			Name:     "pool3",
+			Key:      "pool3",
+			Exclude:  true,
 		},
 	}
 )

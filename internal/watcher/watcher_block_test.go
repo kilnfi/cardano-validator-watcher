@@ -1072,7 +1072,7 @@ cardano_validator_watcher_validated_blocks_total{epoch="101",pool_id="pool-0",po
 		require.Equal(t, watcher.state.Slot, initialSlot)
 	})
 
-	t.Run("GoodPath_PoolEmptyLeaderSlotsAllowed", func(t *testing.T) {
+	t.Run("GoodPath_PoolWithoutLeaderSlotIsSkipped", func(t *testing.T) {
 		t.Parallel()
 
 		clients := setupClients(t)
@@ -1086,7 +1086,6 @@ cardano_validator_watcher_validated_blocks_total{epoch="101",pool_id="pool-0",po
 		currentHeight := 101
 
 		pool := setupPool()
-		pool[0].AllowEmptySlots = true
 
 		ctx := setupContextWithTimeout(t, time.Second*20)
 
@@ -1108,6 +1107,9 @@ cardano_validator_watcher_validated_blocks_total{epoch="101",pool_id="pool-0",po
 		clients.sl.EXPECT().
 			IsSlotsEmpty(mock.Anything, pool[0].ID, epoch).
 			Return(true, nil).Times(1)
+
+		// no leader slot left: next_slot_leader is exported as 0
+		clients.sl.EXPECT().GetNextSlotLeader(mock.Anything, pool[0].ID, currentSlot, epoch).Return(0, nil)
 
 		clients.bf.EXPECT().
 			GetLatestBlock(mock.Anything).
