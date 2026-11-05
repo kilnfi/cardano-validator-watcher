@@ -133,9 +133,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # amd64 only: cardano-cli / cncli are downloaded for x86_64 and cncli has no linux arm64 release
         arch:
           - amd64
-          - arm64
     runs-on: fixed-egress-4c-16g
     steps:
       - name: Checkout repository
@@ -221,7 +221,7 @@ jobs:
             TAGS="${TAGS} -t ${REGISTRY_IMAGE}:latest"
           fi
           docker buildx imagetools create ${TAGS} \
-            $(printf "${REGISTRY_IMAGE}:${{ github.ref_name }}-%s " amd64 arm64)
+            "${REGISTRY_IMAGE}:${{ github.ref_name }}-amd64"
         env:
           REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
 
@@ -229,7 +229,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker buildx imagetools inspect "${REGISTRY_IMAGE}:latest"
+          if [[ "${{ github.ref_name }}" != *"-rc"* ]]; then
+            docker buildx imagetools inspect "${REGISTRY_IMAGE}:latest"
+          fi
           docker buildx imagetools inspect "${REGISTRY_IMAGE}:${{ github.ref_name }}"
         env:
           REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
