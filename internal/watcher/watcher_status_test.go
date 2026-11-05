@@ -135,3 +135,20 @@ cardano_validator_watcher_health_status 0
 		require.NoError(t, err)
 	})
 }
+
+func TestHealthStore_Dependencies(t *testing.T) {
+	t.Parallel()
+
+	store := NewHealthStore()
+	require.False(t, store.GetHealth())
+	require.False(t, store.IsBlockfrostHealthy())
+
+	// the cardano node is down: Blockfrost-only watchers keep running, the block watcher stops
+	store.SetDependencies(true, false)
+	require.False(t, store.GetHealth())
+	require.True(t, store.IsBlockfrostHealthy())
+
+	store.SetHealth(true)
+	require.True(t, store.GetHealth())
+	require.True(t, store.IsBlockfrostHealthy())
+}

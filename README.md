@@ -329,6 +329,8 @@ env:
 | `cardano_validator_watcher_network_active_stake`                  | Total active stake in the network                                           | Gauge       | - |
 | `cardano_validator_watcher_chain_id`                              | ID of the chain                                                             | Gauge       | - |
 | `cardano_validator_watcher_health_status`                         | Health status of the Cardano validator watcher: 1 = healthy, 0 = unhealthy  | Gauge       | - |
+| `cardano_validator_watcher_dependency_up`                         | Health of each dependency (`blockfrost`, `cardano_node`): 1 = healthy, 0 = unhealthy | GaugeVec | `dependency` |
+| `cardano_validator_watcher_last_success_timestamp_seconds`        | Unix time of the last successful run of each component (frozen metrics detection) | GaugeVec | `component` |
 | `cardano_validator_watcher_cardano_node_up`                       | Reachability of each configured cardano-node endpoint: 1 = reachable, 0 = down | Gauge    | `remote` |
 | `cardano_validator_watcher_cardano_node_active`                   | cardano-node endpoint currently selected by the socket proxy: 1 = active, 0 = standby | Gauge | `remote` |
 

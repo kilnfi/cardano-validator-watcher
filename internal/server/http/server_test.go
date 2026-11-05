@@ -2,7 +2,6 @@ package http
 
 import (
 	"context"
-	"net/http"
 	"testing"
 	"time"
 
@@ -82,5 +81,6 @@ func TestStartServer(t *testing.T) {
 	}()
 
 	err = server.Start()
-	require.ErrorIs(t, err, http.ErrServerClosed)
+	// a graceful shutdown is not an error
+	require.NoError(t, err)
 }
