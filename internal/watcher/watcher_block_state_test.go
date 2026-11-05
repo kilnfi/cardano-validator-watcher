@@ -84,12 +84,14 @@ func TestBlockWatcherState_LoadAndReconcile(t *testing.T) {
 		state.Slot = 100
 
 		expectedEpoch := 101
-		expectedSlot := 101
+		// the first block of the epoch is on slot 105 (epoch slot 5): the epoch starts on slot 100,
+		// so the state resumes right before it to process the 5 slots without block
+		expectedSlot := 99
 		expectedDate := time.Date(2024, time.October, 29, 18, 29, 26, 0, time.UTC)
 
 		// mocks
 		mockDBClient.mock.ExpectQuery("SELECT epoch, slot, last_update FROM block_watcher_state LIMIT 1").WillReturnRows(sqlmock.NewRows([]string{"epoch", "slot", "last_update"}).AddRow(state.Epoch, state.Slot, expectedDate))
-		clients.bf.EXPECT().GetFirstBlockInEpoch(mock.Anything, expectedEpoch).Return(blockfrost.Block{Epoch: expectedEpoch, Slot: expectedSlot}, nil)
+		clients.bf.EXPECT().GetFirstBlockInEpoch(mock.Anything, expectedEpoch).Return(blockfrost.Block{Epoch: expectedEpoch, Slot: 105, EpochSlot: 5}, nil)
 		mockDBClient.mock.ExpectExec("INSERT OR REPLACE INTO block_watcher_state (id, epoch, slot, last_update) VALUES (1, ?, ?, ?)").WithArgs(expectedEpoch, expectedSlot, AnyTime{}).WillReturnResult(sqlmock.NewResult(1, 1))
 
 		err := state.LoadAndReconcile(context.Background(), expectedEpoch)

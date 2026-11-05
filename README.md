@@ -141,8 +141,8 @@ cardano:
 | `id`                      | Pool ID                                                   | `"pool1abcd1234efgh5678ijklmnopqrstuvwx"`        |
 | `name`                    | Name of the pool                                          | `"pool-0"`                                                          |
 | `key`                     | Path to the key file                                      | `"config/pool-0.vrf.skey"`                                          |
-| `exclude`                 | Exclude the pool from monitoring                          | `true`                                                              |
-| `allow-empty-slots`       | Pools is allowed to not have slot leaders                 | `false`                                          |
+| `exclude`                 | Exclude the pool from block monitoring. It stays visible through `pool_excluded`, `pool_blocks_minted` and the leader slot odds, so an alert can catch an excluded pool that produces | `true`                                                              |
+| `allow-empty-slots`       | Do not log a warning when the pool has no leader slot. A pool without leader slot no longer stops the watcher: `expected_blocks` is 0 and `pool_no_leader_slot_probability` tells whether it is abnormal | `false`                                          |
 
 
 ### Global Settings
@@ -302,6 +302,10 @@ env:
 | `cardano_validator_watcher_pool_live_delegators`                  | Current number of delegators of the pool                                    | GaugeVec    | `pool_name`, `pool_id`, `pool_instance` |
 | `cardano_validator_watcher_pool_live_pledge`                      | Current stake of the pool owners in lovelace                                | GaugeVec    | `pool_name`, `pool_id`, `pool_instance` |
 | `cardano_validator_watcher_pool_declared_pledge`                  | Pledge declared in the pool registration certificate in lovelace            | GaugeVec    | `pool_name`, `pool_id`, `pool_instance` |
+| `cardano_validator_watcher_pool_expected_leader_slots`            | Mean number of leader slots expected in the current epoch for the active stake | GaugeVec | `pool_name`, `pool_id`, `pool_instance` |
+| `cardano_validator_watcher_pool_no_leader_slot_probability`       | Probability (0 to 1) to get no leader slot in the current epoch              | GaugeVec    | `pool_name`, `pool_id`, `pool_instance` |
+| `cardano_validator_watcher_pool_excluded`                         | Whether the pool is excluded from block monitoring (0 or 1)                 | GaugeVec    | `pool_name`, `pool_id`, `pool_instance` |
+| `cardano_validator_watcher_pool_blocks_minted`                    | Total number of blocks minted by the pool since its registration           | GaugeVec    | `pool_name`, `pool_id`, `pool_instance` |
 | `cardano_validator_watcher_next_epoch_start_time`                 | Start time of the next epoch in seconds                                     | Gauge       | - |
 | `cardano_validator_watcher_monitored_validators_count`            | Number of validators monitored by the watcher                               | Gauge       | - |
 | `cardano_validator_watcher_missed_blocks`                         | Number of missed blocks in the current epoch                                | CounterVec  | `pool_name`, `pool_id`, `pool_instance`, `epoch` |

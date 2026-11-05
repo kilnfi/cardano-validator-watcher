@@ -45,8 +45,10 @@ func (s *BlockWatcherState) LoadAndReconcile(ctx context.Context, currentEpoch i
 		if err != nil {
 			return fmt.Errorf("failed to get first block in epoch %d: %w", currentEpoch, err)
 		}
+		// Resume right before the first slot of the epoch (not its first block):
+		// the slots before the first block may be leader slots that were missed.
 		s.Epoch = currentEpoch
-		s.Slot = block.Slot
+		s.Slot = block.Slot - block.EpochSlot - 1
 
 		if err := s.Save(ctx, s.Epoch, s.Slot); err != nil {
 			return fmt.Errorf("failed to save block watcher state (epoch: %d, slot: %d) after reconcile operation: %w", s.Epoch, s.Slot, err)
