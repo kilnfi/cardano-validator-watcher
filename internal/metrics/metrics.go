@@ -41,6 +41,10 @@ type Collection struct {
 	PoolLiveDelegators                *prometheus.GaugeVec
 	PoolLivePledge                    *prometheus.GaugeVec
 	PoolDeclaredPledge                *prometheus.GaugeVec
+	PoolExpectedLeaderSlots           *prometheus.GaugeVec
+	PoolNoLeaderSlotProbability       *prometheus.GaugeVec
+	PoolExcluded                      *prometheus.GaugeVec
+	PoolBlocksMinted                  *prometheus.GaugeVec
 	MonitoredValidatorsCount          *prometheus.GaugeVec
 	MissedBlocks                      *prometheus.CounterVec
 	ConsecutiveMissedBlocks           *prometheus.GaugeVec
@@ -199,6 +203,38 @@ func NewCollection() *Collection {
 			},
 			poolLabels(),
 		),
+		PoolExpectedLeaderSlots: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: namespace,
+				Name:      "pool_expected_leader_slots",
+				Help:      "Mean number of leader slots expected in the current epoch for the active stake of the pool",
+			},
+			poolLabels(),
+		),
+		PoolNoLeaderSlotProbability: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: namespace,
+				Name:      "pool_no_leader_slot_probability",
+				Help:      "Probability (0 to 1) for the pool to get no leader slot in the current epoch given its active stake",
+			},
+			poolLabels(),
+		),
+		PoolExcluded: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: namespace,
+				Name:      "pool_excluded",
+				Help:      "Whether the pool is excluded from block monitoring in the configuration (0 or 1)",
+			},
+			poolLabels(),
+		),
+		PoolBlocksMinted: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: namespace,
+				Name:      "pool_blocks_minted",
+				Help:      "Total number of blocks minted by the pool since its registration",
+			},
+			poolLabels(),
+		),
 		MonitoredValidatorsCount: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
 				Namespace: namespace,
@@ -310,6 +346,10 @@ func (m *Collection) MustRegister(reg prometheus.Registerer) {
 	reg.MustRegister(m.PoolLiveDelegators)
 	reg.MustRegister(m.PoolLivePledge)
 	reg.MustRegister(m.PoolDeclaredPledge)
+	reg.MustRegister(m.PoolExpectedLeaderSlots)
+	reg.MustRegister(m.PoolNoLeaderSlotProbability)
+	reg.MustRegister(m.PoolExcluded)
+	reg.MustRegister(m.PoolBlocksMinted)
 	reg.MustRegister(m.MonitoredValidatorsCount)
 	reg.MustRegister(m.MissedBlocks)
 	reg.MustRegister(m.ConsecutiveMissedBlocks)

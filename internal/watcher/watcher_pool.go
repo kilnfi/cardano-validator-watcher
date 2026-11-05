@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"strconv"
 	"time"
 
@@ -125,10 +126,21 @@ func (w *PoolWatcher) fetch(ctx context.Context) error {
 	w.metrics.MonitoredValidatorsCount.WithLabelValues("active").Set(float64(w.poolstats.Active))
 	w.metrics.MonitoredValidatorsCount.WithLabelValues("excluded").Set(float64(w.poolstats.Excluded))
 
+	// Leader election parameters, shared by all pools. Without them only the odds are skipped.
+	election, err := w.getLeaderElection(ctx)
+	if err != nil {
+		w.logger.WarnContext(ctx, "unable to compute the leader slot odds", slog.String("error", err.Error()))
+	}
+
 	// A failing pool must not prevent the others from being refreshed
 	var errs []error
 	for _, pool := range w.pools.GetActivePools() {
-		if err := w.collectPool(ctx, pool); err != nil {
+		if err := w.collectPool(ctx, pool, election); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	for _, pool := range w.pools.GetExcludedPools() {
+		if err := w.collectExcludedPool(ctx, pool, election); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -136,8 +148,87 @@ func (w *PoolWatcher) fetch(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
+// collectExcludedPool keeps excluded pools visible: they are not monitored block by block, but
+// exporting their production and leader slot odds lets an alert catch an excluded pool that
+// starts producing (or should), so an exclusion cannot be forgotten.
+func (w *PoolWatcher) collectExcludedPool(ctx context.Context, pool pools.Pool, election *leaderElection) error {
+	labels := []string{pool.Name, pool.ID, pool.Instance}
+
+	poolInfo, err := w.getPoolInfo(ctx, pool.ID)
+	if err != nil {
+		return fmt.Errorf("unable to retrieve details for excluded pool '%s': %w", pool.ID, err)
+	}
+
+	w.metrics.PoolExcluded.WithLabelValues(labels...).Set(1)
+	w.metrics.PoolBlocksMinted.WithLabelValues(labels...).Set(float64(poolInfo.BlocksMinted))
+
+	activeStake, err := strconv.ParseFloat(poolInfo.ActiveStake, 64)
+	if err != nil {
+		return fmt.Errorf("unable to convert active stake of pool '%s' to a number: %w", pool.ID, err)
+	}
+	w.setLeaderOdds(labels, activeStake, election)
+
+	return nil
+}
+
+// setLeaderOdds exports the leader slot odds of the epoch for the given active stake.
+func (w *PoolWatcher) setLeaderOdds(labels []string, activeStake float64, election *leaderElection) {
+	if election == nil {
+		return
+	}
+	expected, noSlot := leaderOdds(activeStake/election.activeStake, election.activeSlotsCoeff, election.epochLength)
+	w.metrics.PoolExpectedLeaderSlots.WithLabelValues(labels...).Set(expected)
+	w.metrics.PoolNoLeaderSlotProbability.WithLabelValues(labels...).Set(noSlot)
+}
+
+// leaderElection holds the network values needed to compute the leader slot odds of a pool.
+type leaderElection struct {
+	activeSlotsCoeff float64
+	epochLength      int
+	activeStake      float64
+}
+
+func (w *PoolWatcher) getLeaderElection(ctx context.Context) (*leaderElection, error) {
+	genesis, ok := w.cache.Get("genesis")
+	if !ok {
+		info, err := w.blockfrost.GetGenesisInfo(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("unable to retrieve genesis info: %w", err)
+		}
+		genesis = info
+		// genesis parameters never change
+		w.cache.Set("genesis", info, 1)
+		w.cache.Wait()
+	}
+	genesisInfo := genesis.(bfAPI.GenesisBlock)
+
+	network, err := w.blockfrost.GetNetworkInfo(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("unable to retrieve network info: %w", err)
+	}
+	activeStake, err := strconv.ParseFloat(network.Stake.Active, 64)
+	if err != nil || activeStake <= 0 {
+		return nil, fmt.Errorf("invalid network active stake %q", network.Stake.Active)
+	}
+
+	return &leaderElection{
+		activeSlotsCoeff: float64(genesisInfo.ActiveSlotsCoefficient),
+		epochLength:      genesisInfo.EpochLength,
+		activeStake:      activeStake,
+	}, nil
+}
+
+// leaderOdds returns, for a relative stake sigma, the mean number of leader slots expected
+// over an epoch and the probability to get none. Ouroboros Praos elects a pool on each slot
+// with probability phi(sigma) = 1 - (1 - f)^sigma, f being the active slots coefficient.
+func leaderOdds(sigma, activeSlotsCoeff float64, epochLength int) (expected, noSlotProbability float64) {
+	phi := 1 - math.Pow(1-activeSlotsCoeff, sigma)
+	slots := float64(epochLength)
+	return slots * phi, math.Pow(1-phi, slots)
+}
+
 // collectPool refreshes the metrics of a single pool.
-func (w *PoolWatcher) collectPool(ctx context.Context, pool pools.Pool) error {
+func (w *PoolWatcher) collectPool(ctx context.Context, pool pools.Pool, election *leaderElection) error {
 	labels := []string{pool.Name, pool.ID, pool.Instance}
 
 	// Get pool details
@@ -147,6 +238,8 @@ func (w *PoolWatcher) collectPool(ctx context.Context, pool pools.Pool) error {
 	}
 
 	// Set pool saturation level and delegation
+	w.metrics.PoolExcluded.WithLabelValues(labels...).Set(0)
+	w.metrics.PoolBlocksMinted.WithLabelValues(labels...).Set(float64(poolInfo.BlocksMinted))
 	w.metrics.PoolsSaturationLevel.WithLabelValues(labels...).Set(poolInfo.LiveSaturation)
 	w.metrics.PoolLiveDelegators.WithLabelValues(labels...).Set(float64(poolInfo.LiveDelegators))
 
@@ -170,6 +263,9 @@ func (w *PoolWatcher) collectPool(ctx context.Context, pool pools.Pool) error {
 		amount.gauge.WithLabelValues(labels...).Set(value)
 		parsed[amount.name] = value
 	}
+
+	// Leader slot odds for the epoch, from the stake snapshot used for the election
+	w.setLeaderOdds(labels, parsed["active stake"], election)
 
 	// check if the pool has met its pledge requirements and set the metric accordingly
 	if parsed["live pledge"] >= parsed["declared pledge"] {
