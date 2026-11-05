@@ -198,6 +198,11 @@ func (s *Service) GetNextSlotLeader(ctx context.Context, PoolID string, height i
 		return 0, fmt.Errorf("GetNextSlotLeader: unable to get slot leaders for pool %s: %w", PoolID, err)
 	}
 
+	// A pool can legitimately have no leader slot in an epoch (small stake)
+	if len(schedule.Slots) == 0 {
+		return 0, nil
+	}
+
 	lastSlot := schedule.Slots[len(schedule.Slots)-1]
 	s.logger.DebugContext(ctx,
 		fmt.Sprintf("last slot for pool %s is %d", PoolID, lastSlot),
@@ -233,6 +238,10 @@ func (s *Service) IsSlotLeader(ctx context.Context, PoolID string, slot int, epo
 		}
 		return false, fmt.Errorf("IsSlotLeader: unable to check if slot %d is a leader for pool %s: %w", slot, PoolID, err)
 	}
+	// SelectContext returns an empty result, not sql.ErrNoRows, when no schedule exists
+	if len(schedule) == 0 {
+		return false, nil
+	}
 	for _, sslot := range schedule[0].Slots {
 		if sslot == slot {
 			return true, nil
@@ -246,6 +255,9 @@ func (s *Service) IsSlotsEmpty(ctx context.Context, PoolID string, epoch int) (b
 	err := s.db.SelectContext(ctx, &schedule, `SELECT slots, slot_qty FROM slots WHERE pool_id = ? AND epoch = ?`, PoolID, epoch)
 	if err != nil {
 		return false, fmt.Errorf("IsSlotsEmpty: unable to check if slots are empty for pool %s: %w", PoolID, err)
+	}
+	if len(schedule) == 0 {
+		return false, fmt.Errorf("IsSlotsEmpty: no slot schedule found for pool %s in epoch %d", PoolID, epoch)
 	}
 
 	return len(schedule[0].Slots) == 0 || schedule[0].Quantity == 0, nil

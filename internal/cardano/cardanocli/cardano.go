@@ -24,6 +24,11 @@ import (
 )
 
 const (
+	cmdQuery       = "query"
+	flagSocketPath = "--socket-path"
+)
+
+const (
 	pingTimeout          = 10 * time.Second
 	stakeSnapshotTimeout = 30 * time.Second
 	leaderLogsTimeout    = 5 * time.Minute
@@ -73,8 +78,8 @@ func NewClient(opts ClientOptions, blockfrost blockfrost.Client, executor Comman
 
 func (c *Client) Ping(ctx context.Context) error {
 	args := []string{
-		"query", "tip",
-		"--socket-path", c.opts.SocketPath,
+		cmdQuery, "tip",
+		flagSocketPath, c.opts.SocketPath,
 	}
 
 	args = c.appendNetworkArgs(args)
@@ -95,11 +100,11 @@ func (c *Client) Ping(ctx context.Context) error {
 
 func (c *Client) StakeSnapshot(ctx context.Context, PoolID string) (cardano.ClientQueryStakeSnapshotResponse, error) {
 	args := []string{
-		"query",
+		cmdQuery,
 		"stake-snapshot",
 		"--stake-pool-id",
 		PoolID,
-		"--socket-path",
+		flagSocketPath,
 		c.opts.SocketPath,
 	}
 
@@ -155,8 +160,8 @@ func (c *Client) LeaderLogsNextEpoch(ctx context.Context, pool pools.Pool) (card
 
 func (c *Client) getProtocolState(ctx context.Context) (cardano.ClientProtocolStateResponse, error) {
 	args := []string{
-		"query", "protocol-state",
-		"--socket-path", c.opts.SocketPath,
+		cmdQuery, "protocol-state",
+		flagSocketPath, c.opts.SocketPath,
 	}
 	args = c.appendNetworkArgs(args)
 

@@ -2,6 +2,7 @@ package watcher
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 	"github.com/kilnfi/cardano-validator-watcher/internal/blockfrost"
 	"github.com/kilnfi/cardano-validator-watcher/internal/metrics"
 	"github.com/kilnfi/cardano-validator-watcher/internal/pools"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // PoolWatcheropts represents the options for the pool watcher.
@@ -123,77 +125,78 @@ func (w *PoolWatcher) fetch(ctx context.Context) error {
 	w.metrics.MonitoredValidatorsCount.WithLabelValues("active").Set(float64(w.poolstats.Active))
 	w.metrics.MonitoredValidatorsCount.WithLabelValues("excluded").Set(float64(w.poolstats.Excluded))
 
-	// Loop through the pools
+	// A failing pool must not prevent the others from being refreshed
+	var errs []error
 	for _, pool := range w.pools.GetActivePools() {
-		// Get pool metadata
-		poolMetadata, err := w.getPoolMetadata(ctx, pool.ID)
-		if err != nil {
-			return fmt.Errorf("unable to retrieve metadata for pool '%s': %w", pool.ID, err)
+		if err := w.collectPool(ctx, pool); err != nil {
+			errs = append(errs, err)
 		}
+	}
 
-		// Get pool details
-		poolInfo, err := w.getPoolInfo(ctx, pool.ID)
-		if err != nil {
-			return fmt.Errorf("unable to retrieve details for pool '%s': %w", pool.ID, err)
-		}
+	return errors.Join(errs...)
+}
 
-		// Set pool saturation level
-		w.metrics.PoolsSaturationLevel.WithLabelValues(pool.Name, pool.ID, pool.Instance).Set(poolInfo.LiveSaturation)
+// collectPool refreshes the metrics of a single pool.
+func (w *PoolWatcher) collectPool(ctx context.Context, pool pools.Pool) error {
+	labels := []string{pool.Name, pool.ID, pool.Instance}
 
-		// check if the pool has met its pledge requirements and set the metric accordingly
-		livePledge, err := strconv.Atoi(poolInfo.LivePledge)
-		if err != nil {
-			return fmt.Errorf("unable to convert live pledge to integer: %w", err)
-		}
+	// Get pool details
+	poolInfo, err := w.getPoolInfo(ctx, pool.ID)
+	if err != nil {
+		return fmt.Errorf("unable to retrieve details for pool '%s': %w", pool.ID, err)
+	}
 
-		declaredPledge, err := strconv.Atoi(poolInfo.DeclaredPledge)
-		if err != nil {
-			return fmt.Errorf("unable to convert declared pledge to integer: %w", err)
-		}
-		if livePledge >= declaredPledge {
-			w.metrics.PoolsPledgeMet.WithLabelValues(pool.Name, pool.ID, pool.Instance).Set(1)
-		} else {
-			w.metrics.PoolsPledgeMet.WithLabelValues(pool.Name, pool.ID, pool.Instance).Set(0)
-		}
+	// Set pool saturation level and delegation
+	w.metrics.PoolsSaturationLevel.WithLabelValues(labels...).Set(poolInfo.LiveSaturation)
+	w.metrics.PoolLiveDelegators.WithLabelValues(labels...).Set(float64(poolInfo.LiveDelegators))
 
-		// Get number of relay servers associated with the pool
-		poolRelays, err := w.getPoolRelays(ctx, pool.ID)
+	// Amounts are returned in lovelace as strings
+	amounts := []struct {
+		name  string
+		value string
+		gauge *prometheus.GaugeVec
+	}{
+		{"live stake", poolInfo.LiveStake, w.metrics.PoolLiveStake},
+		{"active stake", poolInfo.ActiveStake, w.metrics.PoolActiveStake},
+		{"live pledge", poolInfo.LivePledge, w.metrics.PoolLivePledge},
+		{"declared pledge", poolInfo.DeclaredPledge, w.metrics.PoolDeclaredPledge},
+	}
+	parsed := make(map[string]float64, len(amounts))
+	for _, amount := range amounts {
+		value, err := strconv.ParseFloat(amount.value, 64)
 		if err != nil {
-			return fmt.Errorf("unable to retrieve relays for pool '%s': %w", pool.ID, err)
+			return fmt.Errorf("unable to convert %s of pool '%s' to a number: %w", amount.name, pool.ID, err)
 		}
-		w.metrics.RelaysPerPool.WithLabelValues(*poolMetadata.Ticker, pool.ID, pool.Instance).Set(float64(len(poolRelays)))
+		amount.gauge.WithLabelValues(labels...).Set(value)
+		parsed[amount.name] = value
+	}
 
-		// check if a pool owner is registered to a DRep
-		poolAccountInfo, err := w.getAccountInfo(ctx, poolInfo.RewardAccount)
-		if err != nil {
-			return fmt.Errorf("unable to retrieve account info for pool '%s': %w", pool.ID, err)
-		}
-		if poolAccountInfo.DrepID != nil {
-			w.metrics.PoolsDRepRegistered.WithLabelValues(pool.Name, pool.ID, pool.Instance).Set(1)
-		} else {
-			w.metrics.PoolsDRepRegistered.WithLabelValues(pool.Name, pool.ID, pool.Instance).Set(0)
-		}
+	// check if the pool has met its pledge requirements and set the metric accordingly
+	if parsed["live pledge"] >= parsed["declared pledge"] {
+		w.metrics.PoolsPledgeMet.WithLabelValues(labels...).Set(1)
+	} else {
+		w.metrics.PoolsPledgeMet.WithLabelValues(labels...).Set(0)
+	}
+
+	// Get number of relay servers associated with the pool
+	poolRelays, err := w.getPoolRelays(ctx, pool.ID)
+	if err != nil {
+		return fmt.Errorf("unable to retrieve relays for pool '%s': %w", pool.ID, err)
+	}
+	w.metrics.RelaysPerPool.WithLabelValues(labels...).Set(float64(len(poolRelays)))
+
+	// check if a pool owner is registered to a DRep
+	poolAccountInfo, err := w.getAccountInfo(ctx, poolInfo.RewardAccount)
+	if err != nil {
+		return fmt.Errorf("unable to retrieve account info for pool '%s': %w", pool.ID, err)
+	}
+	if poolAccountInfo.DrepID != nil {
+		w.metrics.PoolsDRepRegistered.WithLabelValues(labels...).Set(1)
+	} else {
+		w.metrics.PoolsDRepRegistered.WithLabelValues(labels...).Set(0)
 	}
 
 	return nil
-}
-
-func (w *PoolWatcher) getPoolMetadata(ctx context.Context, PoolID string) (bfAPI.PoolMetadata, error) {
-	var err error
-	var metadata bfAPI.PoolMetadata
-
-	poolMetadata, ok := w.cache.Get(PoolID + "_metadata")
-	if !ok {
-		poolMetadata, err = w.blockfrost.GetPoolMetadata(ctx, PoolID)
-		if err != nil {
-			return metadata, fmt.Errorf("unable to retrieve metadata for pool '%s': %w", PoolID, err)
-		}
-		w.cache.SetWithTTL(PoolID+"_metadata", poolMetadata, 1, w.cacheTTL)
-		w.cache.Wait()
-	}
-	metadata = poolMetadata.(bfAPI.PoolMetadata)
-
-	return metadata, nil
 }
 
 func (w *PoolWatcher) getPoolRelays(ctx context.Context, PoolID string) ([]bfAPI.PoolRelay, error) {
@@ -232,19 +235,19 @@ func (w *PoolWatcher) getPoolInfo(ctx context.Context, PoolID string) (bfAPI.Poo
 	return pool, nil
 }
 
-func (w *PoolWatcher) getAccountInfo(ctx context.Context, address string) (blockfrost.Account, error) {
+func (w *PoolWatcher) getAccountInfo(ctx context.Context, address string) (bfAPI.Account, error) {
 	var err error
-	var account blockfrost.Account
+	var account bfAPI.Account
 
 	accountInfo, ok := w.cache.Get(address + "_info")
 	if !ok {
 		accountInfo, err = w.blockfrost.GetAccountInfo(ctx, address)
 		if err != nil {
-			return blockfrost.Account{}, fmt.Errorf("unable to retrieve info for address '%s': %w", address, err)
+			return bfAPI.Account{}, fmt.Errorf("unable to retrieve info for address '%s': %w", address, err)
 		}
 		w.cache.SetWithTTL(address+"_info", accountInfo, 1, w.cacheTTL)
 		w.cache.Wait()
 	}
-	account = accountInfo.(blockfrost.Account)
+	account = accountInfo.(bfAPI.Account)
 	return account, nil
 }

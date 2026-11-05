@@ -1,6 +1,6 @@
 version: "2"
 run:
-  go: "1.26"
+  go: "1.27"
 linters:
   default: none
   enable:
@@ -60,6 +60,11 @@ linters:
       - common-false-positives
       - legacy
       - std-error-handling
+    rules:
+      # repeated metric names / fixtures in table tests are clearer inline
+      - path: _test\.go
+        linters:
+          - goconst
     paths:
       - third_party$
       - builtin$
