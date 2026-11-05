@@ -221,9 +221,13 @@ func (w *BlockWatcher) handleEpochtransition(ctx context.Context) error {
 		return fmt.Errorf("handleEpochTransition: failed to get latest epoch: %w", err)
 	}
 
+	previousEpoch := w.state.Epoch
 	if err := w.state.Save(ctx, epoch.Epoch, w.state.Slot); err != nil {
 		return fmt.Errorf("handleEpochTransition: failed to save state after epoch transition: %w", err)
 	}
+
+	// Stop exporting the gauges of the epoch that just ended
+	w.metrics.DeleteEpochSeries(strconv.Itoa(previousEpoch))
 
 	// Update the slot leader schedule for each pool
 	w.logger.InfoContext(ctx, "🔄 Refreshing slot leader schedule for the new epoch", slog.Int("epoch", epoch.Epoch))

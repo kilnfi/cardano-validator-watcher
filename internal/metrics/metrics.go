@@ -5,6 +5,22 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 )
 
+const (
+	namespace = "cardano_validator_watcher"
+	// EpochLabel is the label carrying the epoch number on per-epoch block metrics.
+	EpochLabel = "epoch"
+)
+
+// poolLabels returns the labels identifying a monitored pool.
+func poolLabels() []string {
+	return []string{"pool_name", "pool_id", "pool_instance"}
+}
+
+// poolEpochLabels returns the pool labels plus the epoch label.
+func poolEpochLabels() []string {
+	return append(poolLabels(), EpochLabel)
+}
+
 type Collection struct {
 	ChainID                           *prometheus.GaugeVec
 	EpochDuration                     prometheus.Gauge
@@ -20,6 +36,11 @@ type Collection struct {
 	PoolsPledgeMet                    *prometheus.GaugeVec
 	PoolsSaturationLevel              *prometheus.GaugeVec
 	PoolsDRepRegistered               *prometheus.GaugeVec
+	PoolLiveStake                     *prometheus.GaugeVec
+	PoolActiveStake                   *prometheus.GaugeVec
+	PoolLiveDelegators                *prometheus.GaugeVec
+	PoolLivePledge                    *prometheus.GaugeVec
+	PoolDeclaredPledge                *prometheus.GaugeVec
 	MonitoredValidatorsCount          *prometheus.GaugeVec
 	MissedBlocks                      *prometheus.CounterVec
 	ConsecutiveMissedBlocks           *prometheus.GaugeVec
@@ -37,7 +58,7 @@ func NewCollection() *Collection {
 	return &Collection{
 		ChainID: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
-				Namespace: "cardano_validator_watcher",
+				Namespace: namespace,
 				Name:      "chain_id",
 				Help:      "Chain ID",
 			},
@@ -45,102 +66,142 @@ func NewCollection() *Collection {
 		),
 		EpochDuration: prometheus.NewGauge(
 			prometheus.GaugeOpts{
-				Namespace: "cardano_validator_watcher",
+				Namespace: namespace,
 				Name:      "epoch_duration",
 				Help:      "Duration of an epoch in days",
 			},
 		),
 		NetworkEpoch: prometheus.NewGauge(
 			prometheus.GaugeOpts{
-				Namespace: "cardano_validator_watcher",
+				Namespace: namespace,
 				Name:      "network_epoch",
 				Help:      "Current epoch number",
 			},
 		),
 		NextEpochStartTime: prometheus.NewGauge(
 			prometheus.GaugeOpts{
-				Namespace: "cardano_validator_watcher",
+				Namespace: namespace,
 				Name:      "next_epoch_start_time",
 				Help:      "start time of the next epoch in seconds",
 			},
 		),
 		NetworkBlockHeight: prometheus.NewGauge(
 			prometheus.GaugeOpts{
-				Namespace: "cardano_validator_watcher",
+				Namespace: namespace,
 				Name:      "network_block_height",
 				Help:      "Latest known block height",
 			},
 		),
 		NetworkSlot: prometheus.NewGauge(
 			prometheus.GaugeOpts{
-				Namespace: "cardano_validator_watcher",
+				Namespace: namespace,
 				Name:      "network_slot",
 				Help:      "Latest known slot",
 			},
 		),
 		NetworkEpochSlot: prometheus.NewGauge(
 			prometheus.GaugeOpts{
-				Namespace: "cardano_validator_watcher",
+				Namespace: namespace,
 				Name:      "network_epoch_slot",
 				Help:      "Latest known epoch slot",
 			},
 		),
 		NetworkTotalPools: prometheus.NewGauge(
 			prometheus.GaugeOpts{
-				Namespace: "cardano_validator_watcher",
+				Namespace: namespace,
 				Name:      "network_pools",
 				Help:      "Total number of pools in the network",
 			},
 		),
 		NetworkCurrentEpochProposedBlocks: prometheus.NewGauge(
 			prometheus.GaugeOpts{
-				Namespace: "cardano_validator_watcher",
+				Namespace: namespace,
 				Name:      "network_blocks_proposed_current_epoch",
 				Help:      "Number of blocks proposed in the current epoch by the network",
 			},
 		),
 		NetworkActiveStake: prometheus.NewGauge(
 			prometheus.GaugeOpts{
-				Namespace: "cardano_validator_watcher",
+				Namespace: namespace,
 				Name:      "network_active_stake",
 				Help:      "Total active stake in the network",
 			},
 		),
 		RelaysPerPool: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
-				Namespace: "cardano_validator_watcher",
+				Namespace: namespace,
 				Name:      "pool_relays",
 				Help:      "Count of relays associated with each pool",
 			},
-			[]string{"pool_name", "pool_id", "pool_instance"},
+			poolLabels(),
 		),
 		PoolsPledgeMet: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
-				Namespace: "cardano_validator_watcher",
+				Namespace: namespace,
 				Name:      "pool_pledge_met",
 				Help:      "Whether the pool has met its pledge requirements or not (0 or 1)",
 			},
-			[]string{"pool_name", "pool_id", "pool_instance"},
+			poolLabels(),
 		),
 		PoolsSaturationLevel: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
-				Namespace: "cardano_validator_watcher",
+				Namespace: namespace,
 				Name:      "pool_saturation_level",
 				Help:      "The current saturation level of the pool in percent",
 			},
-			[]string{"pool_name", "pool_id", "pool_instance"},
+			poolLabels(),
 		),
 		PoolsDRepRegistered: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
-				Namespace: "cardano_validator_watcher",
+				Namespace: namespace,
 				Name:      "pool_drep_registered",
 				Help:      "Whether the pool owner is registered to a DRep (0 or 1)",
 			},
-			[]string{"pool_name", "pool_id", "pool_instance"},
+			poolLabels(),
+		),
+		PoolLiveStake: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: namespace,
+				Name:      "pool_live_stake",
+				Help:      "Current stake delegated to the pool in lovelace (updated in real time)",
+			},
+			poolLabels(),
+		),
+		PoolActiveStake: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: namespace,
+				Name:      "pool_active_stake",
+				Help:      "Stake of the pool in lovelace taken from the snapshot used for the current epoch",
+			},
+			poolLabels(),
+		),
+		PoolLiveDelegators: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: namespace,
+				Name:      "pool_live_delegators",
+				Help:      "Current number of delegators of the pool",
+			},
+			poolLabels(),
+		),
+		PoolLivePledge: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: namespace,
+				Name:      "pool_live_pledge",
+				Help:      "Current stake of the pool owners in lovelace",
+			},
+			poolLabels(),
+		),
+		PoolDeclaredPledge: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: namespace,
+				Name:      "pool_declared_pledge",
+				Help:      "Pledge declared in the pool registration certificate in lovelace",
+			},
+			poolLabels(),
 		),
 		MonitoredValidatorsCount: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
-				Namespace: "cardano_validator_watcher",
+				Namespace: namespace,
 				Name:      "monitored_validators",
 				Help:      "number of validators monitored by the watcher",
 			},
@@ -148,69 +209,69 @@ func NewCollection() *Collection {
 		),
 		MissedBlocks: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
-				Namespace: "cardano_validator_watcher",
+				Namespace: namespace,
 				Name:      "missed_blocks_total",
 				Help:      "number of missed blocks in the current epoch",
 			},
-			[]string{"pool_name", "pool_id", "pool_instance", "epoch"},
+			poolEpochLabels(),
 		),
 		ConsecutiveMissedBlocks: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
-				Namespace: "cardano_validator_watcher",
+				Namespace: namespace,
 				Name:      "consecutive_missed_blocks",
 				Help:      "number of consecutive missed blocks in a row",
 			},
-			[]string{"pool_name", "pool_id", "pool_instance", "epoch"},
+			poolEpochLabels(),
 		),
 		ValidatedBlocks: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
-				Namespace: "cardano_validator_watcher",
+				Namespace: namespace,
 				Name:      "validated_blocks_total",
 				Help:      "number of validated blocks in the current epoch",
 			},
-			[]string{"pool_name", "pool_id", "pool_instance", "epoch"},
+			poolEpochLabels(),
 		),
 		OrphanedBlocks: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
-				Namespace: "cardano_validator_watcher",
+				Namespace: namespace,
 				Name:      "orphaned_blocks_total",
 				Help:      "number of orphaned blocks in the current epoch",
 			},
-			[]string{"pool_name", "pool_id", "pool_instance", "epoch"},
+			poolEpochLabels(),
 		),
 		ExpectedBlocks: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
-				Namespace: "cardano_validator_watcher",
+				Namespace: namespace,
 				Name:      "expected_blocks",
 				Help:      "number of expected blocks in the current epoch",
 			},
-			[]string{"pool_name", "pool_id", "pool_instance", "epoch"},
+			poolEpochLabels(),
 		),
 		LatestSlotProcessedByBlockWatcher: prometheus.NewGauge(
 			prometheus.GaugeOpts{
-				Namespace: "cardano_validator_watcher",
+				Namespace: namespace,
 				Name:      "latest_slot_processed_by_block_watcher",
 				Help:      "latest slot processed by the block watcher",
 			},
 		),
 		NextSlotLeader: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
-				Namespace: "cardano_validator_watcher",
+				Namespace: namespace,
 				Name:      "next_slot_leader",
 				Help:      "next slot leader for each monitored pool",
 			},
-			[]string{"pool_name", "pool_id", "pool_instance", "epoch"},
+			poolEpochLabels(),
 		),
 		HealthStatus: prometheus.NewGauge(
 			prometheus.GaugeOpts{
-				Namespace: "cardano_validator_watcher",
+				Namespace: namespace,
 				Name:      "health_status",
 				Help:      "Health status of the Cardano validator watcher: 1 = healthy, 0 = unhealthy",
 			},
 		),
 		CardanoNodeUp: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
-				Namespace: "cardano_validator_watcher",
+				Namespace: namespace,
 				Name:      "cardano_node_up",
 				Help:      "Reachability of each configured cardano-node endpoint: 1 = reachable, 0 = down",
 			},
@@ -218,7 +279,7 @@ func NewCollection() *Collection {
 		),
 		CardanoNodeActive: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
-				Namespace: "cardano_validator_watcher",
+				Namespace: namespace,
 				Name:      "cardano_node_active",
 				Help:      "Cardano-node endpoint currently selected by the socket proxy: 1 = active, 0 = standby",
 			},
@@ -244,6 +305,11 @@ func (m *Collection) MustRegister(reg prometheus.Registerer) {
 	reg.MustRegister(m.PoolsPledgeMet)
 	reg.MustRegister(m.PoolsSaturationLevel)
 	reg.MustRegister(m.PoolsDRepRegistered)
+	reg.MustRegister(m.PoolLiveStake)
+	reg.MustRegister(m.PoolActiveStake)
+	reg.MustRegister(m.PoolLiveDelegators)
+	reg.MustRegister(m.PoolLivePledge)
+	reg.MustRegister(m.PoolDeclaredPledge)
 	reg.MustRegister(m.MonitoredValidatorsCount)
 	reg.MustRegister(m.MissedBlocks)
 	reg.MustRegister(m.ConsecutiveMissedBlocks)
@@ -255,4 +321,15 @@ func (m *Collection) MustRegister(reg prometheus.Registerer) {
 	reg.MustRegister(m.HealthStatus)
 	reg.MustRegister(m.CardanoNodeUp)
 	reg.MustRegister(m.CardanoNodeActive)
+}
+
+// DeleteEpochSeries removes the epoch-labelled gauge series of the given epoch.
+// Counters are reset at each epoch transition, but gauges are not: without this,
+// expected_blocks, consecutive_missed_blocks and next_slot_leader keep exporting
+// a series for every epoch since the watcher started.
+func (m *Collection) DeleteEpochSeries(epoch string) {
+	labels := prometheus.Labels{EpochLabel: epoch}
+	m.ExpectedBlocks.DeletePartialMatch(labels)
+	m.ConsecutiveMissedBlocks.DeletePartialMatch(labels)
+	m.NextSlotLeader.DeletePartialMatch(labels)
 }

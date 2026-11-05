@@ -293,10 +293,15 @@ env:
 
 | Metric Name                                                       | Description          | Type | Labels |
 | ----------------------------------------------------------------- | -------------------- |---- | --- |
-| `cardano_validator_watcher_pool_relay_count`                      | Number of relays associated with each pool                                  | GaugeVec    | `pool_name`, `pool_id`, `pool_instance` |
+| `cardano_validator_watcher_pool_relays`                           | Number of relays declared on-chain by each pool                             | GaugeVec    | `pool_name`, `pool_id`, `pool_instance` |
 | `cardano_validator_watcher_pool_pledge_met`                       | Indicates whether the pool has met its pledge requirements or not (0 or 1)  | GaugeVec    | `pool_name`, `pool_id`, `pool_instance` |
 | `cardano_validator_watcher_pool_saturation_level`                 | The current saturation level of the pool in percent                         | GaugeVec    | `pool_name`, `pool_id`, `pool_instance` |
 | `cardano_validator_watcher_pool_drep_registered`                  | Whether the pool owner is registered to a DRep (0 or 1)                    | GaugeVec    | `pool_name`, `pool_id`, `pool_instance` |
+| `cardano_validator_watcher_pool_live_stake`                       | Current stake delegated to the pool in lovelace (updated in real time)      | GaugeVec    | `pool_name`, `pool_id`, `pool_instance` |
+| `cardano_validator_watcher_pool_active_stake`                     | Stake of the pool in lovelace from the snapshot used for the current epoch  | GaugeVec    | `pool_name`, `pool_id`, `pool_instance` |
+| `cardano_validator_watcher_pool_live_delegators`                  | Current number of delegators of the pool                                    | GaugeVec    | `pool_name`, `pool_id`, `pool_instance` |
+| `cardano_validator_watcher_pool_live_pledge`                      | Current stake of the pool owners in lovelace                                | GaugeVec    | `pool_name`, `pool_id`, `pool_instance` |
+| `cardano_validator_watcher_pool_declared_pledge`                  | Pledge declared in the pool registration certificate in lovelace            | GaugeVec    | `pool_name`, `pool_id`, `pool_instance` |
 | `cardano_validator_watcher_next_epoch_start_time`                 | Start time of the next epoch in seconds                                     | Gauge       | - |
 | `cardano_validator_watcher_monitored_validators_count`            | Number of validators monitored by the watcher                               | Gauge       | - |
 | `cardano_validator_watcher_missed_blocks`                         | Number of missed blocks in the current epoch                                | CounterVec  | `pool_name`, `pool_id`, `pool_instance`, `epoch` |
