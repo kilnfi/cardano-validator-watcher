@@ -540,6 +540,9 @@ cardano_validator_watcher_orphaned_blocks_total{epoch="100", pool_id="pool-0", p
 				currentSlot-1,
 			).
 			Return(blockfrost.Block{SlotLeader: "bad-pool"}, nil)
+		clients.bf.EXPECT().
+			GetPoolMetadata(mock.Anything, "bad-pool").
+			Return(blockfrost.PoolMetadata{}, errors.New("not found"))
 
 		// handle currentSlot
 		clients.sl.EXPECT().
@@ -1341,17 +1344,24 @@ func TestBlockWatcher_EventLogs(t *testing.T) {
 	// the counters behind the logs follow the outcomes
 	watcher.recordOutcome(ctx, 100, slotOutcome{pool: pool[0], slot: 10, kind: outcomeMissed})
 	watcher.recordOutcome(ctx, 100, slotOutcome{pool: pool[0], slot: 11, kind: outcomeMissed})
+	ticker, name := "WIN", "Winner Pool"
+	clients.bf.EXPECT().GetPoolMetadata(mock.Anything, "pool-winner").
+		Return(blockfrost.PoolMetadata{Ticker: &ticker, Name: &name}, nil).Once()
 	watcher.recordOutcome(ctx, 100, slotOutcome{pool: pool[0], slot: 12, kind: outcomeOrphaned,
 		block: blockfrost.Block{SlotLeader: "pool-winner", Hash: "abc"}})
+	// the name is cached: a second battle against the same pool does not query Blockfrost again
+	watcher.recordOutcome(ctx, 100, slotOutcome{pool: pool[0], slot: 14, kind: outcomeOrphaned,
+		block: blockfrost.Block{SlotLeader: "pool-winner", Hash: "def"}})
 	watcher.recordOutcome(ctx, 100, slotOutcome{pool: pool[0], slot: 13, kind: outcomeValidated})
 	require.Contains(t, logs.String(), "consecutive_missed=2")
-	require.Contains(t, logs.String(), "lost the slot battle for slot 12 to pool pool-winner")
-	require.Equal(t, epochCounts{validated: 1, missed: 2, orphaned: 1}, watcher.counts[pool[0].ID])
+	require.Contains(t, logs.String(), "lost the slot battle for slot 12 to [WIN] Winner Pool")
+	require.Contains(t, logs.String(), "lost the slot battle for slot 14 to [WIN] Winner Pool")
+	require.Equal(t, epochCounts{validated: 1, missed: 2, orphaned: 2}, watcher.counts[pool[0].ID])
 
 	// the epoch summary reports the schedule and the counters
 	clients.sl.EXPECT().GetSlotLeaders(mock.Anything, pool[0].ID, 100).Return(slotleader.Schedule{Quantity: 5}, nil)
 	watcher.logEpochSummary(ctx, 100)
-	require.Contains(t, logs.String(), "Epoch 100 summary for pool pool-0: 5 scheduled, 1 validated, 2 missed, 1 orphaned")
+	require.Contains(t, logs.String(), "Epoch 100 summary for pool pool-0: 5 scheduled, 1 validated, 2 missed, 2 orphaned")
 
 	// the next leader slot is logged at INFO once per change
 	logs.Reset()

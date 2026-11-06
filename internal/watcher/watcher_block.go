@@ -67,6 +67,8 @@ type BlockWatcher struct {
 	// consecutive misses), nextSlots the last next leader slot logged per pool.
 	counts    map[string]epochCounts
 	nextSlots map[string]int
+	// poolNames caches the ticker and name of the other pools met in slot battles.
+	poolNames map[string]string
 }
 
 var _ Watcher = (*BlockWatcher)(nil)
@@ -101,6 +103,7 @@ func NewBlockWatcher(
 		opts:              opts,
 		counts:            make(map[string]epochCounts),
 		nextSlots:         make(map[string]int),
+		poolNames:         make(map[string]string),
 	}
 }
 
@@ -533,15 +536,17 @@ func (w *BlockWatcher) logValidatedBlock(ctx context.Context, pool pools.Pool, s
 }
 
 func (w *BlockWatcher) logOrphanedBlock(ctx context.Context, pool pools.Pool, slot, epoch int, block bf.Block) {
+	winner := w.poolDisplayName(ctx, block.SlotLeader)
 	w.logger.InfoContext(ctx,
-		fmt.Sprintf("🥊 Pool %s lost the slot battle for slot %d to pool %s",
+		fmt.Sprintf("🥊 Pool %s lost the slot battle for slot %d to %s",
 			pool.Name,
 			slot,
-			block.SlotLeader,
+			winner,
 		),
 		slog.Int("epoch", epoch),
 		slog.String("pool_id", pool.ID),
 		slog.Int("slot", slot),
+		slog.String("winner", winner),
 		slog.String("winner_pool_id", block.SlotLeader),
 		slog.String("block_hash", block.Hash),
 		slog.Int("block_num", block.Height),
@@ -577,6 +582,32 @@ func (w *BlockWatcher) fetchAndLogNextSlotLeaders(ctx context.Context, block bf.
 		w.metrics.NextSlotLeader.WithLabelValues(pool.Name, pool.ID, pool.Instance, strconv.Itoa(w.state.Epoch)).Set(float64(nextSlot))
 	}
 	return nil
+}
+
+// poolDisplayName returns "[TICKER] Name" for a pool from its on-chain metadata, or its pool ID
+// when the pool has no metadata or Blockfrost fails. Successful lookups are cached.
+func (w *BlockWatcher) poolDisplayName(ctx context.Context, poolID string) string {
+	if name, ok := w.poolNames[poolID]; ok {
+		return name
+	}
+	metadata, err := w.blockfrost.GetPoolMetadata(ctx, poolID)
+	if err != nil {
+		w.logger.DebugContext(ctx, "unable to get pool metadata", slog.String("pool_id", poolID), slog.String("error", err.Error()))
+		return poolID
+	}
+	var parts []string
+	if metadata.Ticker != nil && *metadata.Ticker != "" {
+		parts = append(parts, "["+*metadata.Ticker+"]")
+	}
+	if metadata.Name != nil && *metadata.Name != "" {
+		parts = append(parts, *metadata.Name)
+	}
+	name := poolID
+	if len(parts) > 0 {
+		name = strings.Join(parts, " ")
+	}
+	w.poolNames[poolID] = name
+	return name
 }
 
 // logNextLeaderSlot logs the next leader slot of the pool once, when it changes: after each
