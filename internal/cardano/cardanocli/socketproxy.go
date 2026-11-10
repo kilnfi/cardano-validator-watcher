@@ -2,6 +2,7 @@ package cardanocli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -26,6 +27,12 @@ const (
 	healthProbeInterval = 15 * time.Second
 	// probeTimeout bounds a single health-probe dial.
 	probeTimeout = 5 * time.Second
+	// probeHoldTime is how long a health probe keeps its connection open. A
+	// socat bridge accepts the TCP connection before it connects to the node
+	// socket, and closes it at once when that socket is missing (node down or
+	// still replaying its database). A healthy bridge keeps it open, waiting for
+	// the client handshake.
+	probeHoldTime = 500 * time.Millisecond
 )
 
 // RemoteNode identifies a cardano-node TCP endpoint, typically a socat bridge
@@ -156,21 +163,51 @@ func (p *SocketProxy) runHealthProbe(ctx context.Context) {
 	}
 }
 
-// probeAll opens and immediately closes a TCP connection to every endpoint to
-// check reachability, updating each endpoint's availability and the metrics.
+// probeAll checks every endpoint, updating its availability and the metrics.
+// It logs each change of state.
 func (p *SocketProxy) probeAll(ctx context.Context) {
 	for _, ep := range p.endpoints {
-		dialCtx, cancel := context.WithTimeout(ctx, probeTimeout)
-		conn, err := (&net.Dialer{}).DialContext(dialCtx, "tcp", ep.addr)
-		cancel()
-		if err != nil {
+		wasDown := ep.isDown(time.Now())
+		if err := probeEndpoint(ctx, ep.addr); err != nil {
 			ep.markDown(time.Now().Add(failoverCooldown))
+			if !wasDown {
+				p.logger.WarnContext(ctx, "cardano node unavailable, failing over",
+					slog.String("remote", ep.addr),
+					slog.String("error", err.Error()),
+				)
+			}
 			continue
 		}
-		_ = conn.Close()
 		ep.clearDown()
+		if wasDown {
+			p.logger.InfoContext(ctx, "cardano node available again", slog.String("remote", ep.addr))
+		}
 	}
 	p.updateMetrics()
+}
+
+// probeEndpoint connects to addr and holds the connection for probeHoldTime.
+// The endpoint is healthy if the connection stays open: a bridge whose node
+// socket is missing accepts the connection and closes it right away.
+func probeEndpoint(ctx context.Context, addr string) error {
+	dialCtx, cancel := context.WithTimeout(ctx, probeTimeout)
+	defer cancel()
+	conn, err := (&net.Dialer{}).DialContext(dialCtx, "tcp", addr)
+	if err != nil {
+		return fmt.Errorf("failed to connect: %w", err)
+	}
+	defer conn.Close()
+
+	if err := conn.SetReadDeadline(time.Now().Add(probeHoldTime)); err != nil {
+		return fmt.Errorf("failed to set read deadline: %w", err)
+	}
+	var buf [1]byte
+	_, err = conn.Read(buf[:])
+	var netErr net.Error
+	if err == nil || (errors.As(err, &netErr) && netErr.Timeout()) {
+		return nil
+	}
+	return fmt.Errorf("connection closed by the remote, node socket unavailable: %w", err)
 }
 
 // updateMetrics publishes the up/active gauge for each endpoint. The active
@@ -204,7 +241,7 @@ func (p *SocketProxy) updateMetrics() {
 // priority order. Endpoints that recently failed are skipped for
 // failoverCooldown so we don't repeatedly pay the dial timeout on a down node;
 // if every endpoint is in cooldown they are all retried as a last resort.
-func (p *SocketProxy) dialRemote(ctx context.Context) (net.Conn, error) {
+func (p *SocketProxy) dialRemote(ctx context.Context) (*remoteEndpoint, net.Conn, error) {
 	defer p.updateMetrics()
 
 	now := time.Now()
@@ -231,17 +268,18 @@ func (p *SocketProxy) dialRemote(ctx context.Context) (net.Conn, error) {
 			)
 			continue
 		}
-		ep.clearDown()
-		return remote, nil
+		// A successful dial does not prove the node socket is up, so only the
+		// health probe clears the down state.
+		return ep, remote, nil
 	}
 
-	return nil, lastErr
+	return nil, nil, lastErr
 }
 
 func (p *SocketProxy) proxy(ctx context.Context, local net.Conn) {
 	defer local.Close()
 
-	remote, err := p.dialRemote(ctx)
+	ep, remote, err := p.dialRemote(ctx)
 	if err != nil {
 		p.logger.ErrorContext(ctx, "failed to connect to any remote",
 			slog.String("error", err.Error()),
@@ -262,15 +300,29 @@ func (p *SocketProxy) proxy(ctx context.Context, local net.Conn) {
 		remote.SetDeadline(now) //nolint:errcheck
 	}()
 
-	done := make(chan struct{}, 2)
-	go func() { io.Copy(remote, local); done <- struct{}{} }() //nolint:errcheck
-	go func() { io.Copy(local, remote); done <- struct{}{} }() //nolint:errcheck
+	type copyResult struct {
+		fromRemote bool
+		bytes      int64
+	}
+	done := make(chan copyResult, 2)
+	go func() { n, _ := io.Copy(remote, local); done <- copyResult{bytes: n} }()
+	go func() { n, _ := io.Copy(local, remote); done <- copyResult{fromRemote: true, bytes: n} }()
 
-	<-done
+	first := <-done
 	// One direction finished — cancel the context to trigger the watcher
 	// goroutine above, which force-closes both connections. Without this,
 	// io.Copy(local, remote) stays blocked on remote.Read() indefinitely
 	// when cardano-cli is killed, leaking a socat child process per call.
 	cancel()
 	<-done
+
+	// The remote hung up without sending a single byte: the bridge is up but
+	// its node socket is not. Skip this endpoint so the next call fails over.
+	if first.fromRemote && first.bytes == 0 {
+		ep.markDown(time.Now().Add(failoverCooldown))
+		p.updateMetrics()
+		p.logger.WarnContext(ctx, "remote closed the connection without answering, failing over",
+			slog.String("remote", ep.addr),
+		)
+	}
 }

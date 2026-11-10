@@ -186,3 +186,112 @@ func TestSocketProxy_PublishesPerNodeMetrics(t *testing.T) {
 	require.InDelta(t, 0.0, promutils.ToFloat64(m.CardanoNodeActive.WithLabelValues(down.addr())), 0.0001)
 	require.InDelta(t, 1.0, promutils.ToFloat64(m.CardanoNodeActive.WithLabelValues(good.addr())), 0.0001)
 }
+
+// startDeadBridge starts a TCP server that accepts connections and closes them
+// at once, like a socat bridge whose node socket does not exist yet.
+func startDeadBridge(t *testing.T) RemoteNode {
+	t.Helper()
+
+	ln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { ln.Close() })
+
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			conn.Close()
+		}
+	}()
+
+	return mustRemoteNode(t, ln.Addr().String())
+}
+
+// startSilentNode starts a TCP server that keeps idle connections open but
+// hangs up as soon as the client sends data, without answering.
+func startSilentNode(t *testing.T) RemoteNode {
+	t.Helper()
+
+	ln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { ln.Close() })
+
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				buf := make([]byte, 1024)
+				_, _ = c.Read(buf)
+			}(conn)
+		}
+	}()
+
+	return mustRemoteNode(t, ln.Addr().String())
+}
+
+func TestProbeEndpoint(t *testing.T) {
+	t.Parallel()
+
+	require.NoError(t, probeEndpoint(t.Context(), startEchoServer(t).addr()))
+	require.Error(t, probeEndpoint(t.Context(), startDeadBridge(t).addr()))
+	require.Error(t, probeEndpoint(t.Context(), closedAddr(t).addr()))
+}
+
+func TestSocketProxy_ProbeMarksDeadBridgeDown(t *testing.T) {
+	t.Parallel()
+
+	dead := startDeadBridge(t)
+	good := startEchoServer(t)
+
+	m := metrics.NewCollection()
+	socketPath := filepath.Join(t.TempDir(), "proxy.sock")
+	proxy, err := NewSocketProxy(t.Context(), socketPath, []RemoteNode{dead, good}, m)
+	require.NoError(t, err)
+
+	proxy.probeAll(t.Context())
+
+	require.True(t, proxy.endpoints[0].isDown(time.Now()), "bridge without node socket should be down")
+	require.False(t, proxy.endpoints[1].isDown(time.Now()))
+	require.InDelta(t, 0.0, promutils.ToFloat64(m.CardanoNodeUp.WithLabelValues(dead.addr())), 0.0001)
+	require.InDelta(t, 1.0, promutils.ToFloat64(m.CardanoNodeActive.WithLabelValues(good.addr())), 0.0001)
+}
+
+func TestSocketProxy_FailsOverFromDeadBridge(t *testing.T) {
+	t.Parallel()
+
+	dead := startDeadBridge(t)
+	good := startEchoServer(t)
+	proxy := newTestProxy(t, []RemoteNode{dead, good})
+
+	require.Eventually(t, func() bool { return proxy.endpoints[0].isDown(time.Now()) }, 2*time.Second, 10*time.Millisecond)
+	require.Equal(t, "failover", roundtrip(t, proxy.SocketPath(), "failover"))
+}
+
+func TestSocketProxy_MarksDownRemoteThatClosesWithoutAnswering(t *testing.T) {
+	t.Parallel()
+
+	silent := startSilentNode(t)
+	good := startEchoServer(t)
+	proxy := newTestProxy(t, []RemoteNode{silent, good})
+
+	// The silent node passes the probe, so the first call reaches it and gets
+	// no answer.
+	require.Eventually(t, func() bool { return !proxy.endpoints[0].isDown(time.Now()) }, 2*time.Second, 10*time.Millisecond)
+	conn, err := (&net.Dialer{}).DialContext(t.Context(), "unix", proxy.SocketPath())
+	require.NoError(t, err)
+	_, err = conn.Write([]byte("first"))
+	require.NoError(t, err)
+	require.NoError(t, conn.SetReadDeadline(time.Now().Add(2*time.Second)))
+	_, err = conn.Read(make([]byte, 8))
+	require.Error(t, err)
+	conn.Close()
+
+	require.Eventually(t, func() bool { return proxy.endpoints[0].isDown(time.Now()) }, 2*time.Second, 10*time.Millisecond)
+	require.Equal(t, "second", roundtrip(t, proxy.SocketPath(), "second"))
+}
