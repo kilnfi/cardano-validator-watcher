@@ -194,12 +194,12 @@ func probeEndpoint(ctx context.Context, addr string) error {
 	defer cancel()
 	conn, err := (&net.Dialer{}).DialContext(dialCtx, "tcp", addr)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to connect: %w", err)
 	}
 	defer conn.Close()
 
 	if err := conn.SetReadDeadline(time.Now().Add(probeHoldTime)); err != nil {
-		return err
+		return fmt.Errorf("failed to set read deadline: %w", err)
 	}
 	var buf [1]byte
 	_, err = conn.Read(buf[:])
