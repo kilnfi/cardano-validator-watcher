@@ -216,8 +216,13 @@ func probeEndpoint(ctx context.Context, addr string) error {
 
 // updateState publishes the up/active gauge for each endpoint and logs when
 // the active endpoint changes. The active endpoint is the highest-priority one
-// that is currently reachable, matching what dialRemote would pick.
+// that is currently reachable, matching what dialRemote would pick. The health
+// probe and proxied calls run it concurrently, so selection, metrics and logs
+// happen under one lock to keep transitions in order.
 func (p *SocketProxy) updateState() {
+	p.activeMu.Lock()
+	defer p.activeMu.Unlock()
+
 	now := time.Now()
 	active := ""
 	for _, ep := range p.endpoints {
@@ -232,23 +237,16 @@ func (p *SocketProxy) updateState() {
 		p.metrics.CardanoNodeUp.WithLabelValues(ep.addr).Set(boolToFloat(up))
 		p.metrics.CardanoNodeActive.WithLabelValues(ep.addr).Set(boolToFloat(isActive))
 	}
-	p.setActive(active)
-}
 
-func (p *SocketProxy) setActive(addr string) {
-	p.activeMu.Lock()
-	changed := !p.activeKnown || p.active != addr
-	p.active, p.activeKnown = addr, true
-	p.activeMu.Unlock()
-
-	if !changed {
+	if p.activeKnown && p.active == active {
 		return
 	}
-	if addr == "" {
+	p.active, p.activeKnown = active, true
+	if active == "" {
 		p.logger.Error("no cardano node available")
 		return
 	}
-	p.logger.Info("using cardano node", slog.String("remote", addr))
+	p.logger.Info("using cardano node", slog.String("remote", active))
 }
 
 // activeRemote returns the endpoint currently in use, or "" if none is up.
