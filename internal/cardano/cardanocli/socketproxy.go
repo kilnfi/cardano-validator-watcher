@@ -81,6 +81,10 @@ type SocketProxy struct {
 	listener   net.Listener
 	logger     *slog.Logger
 	metrics    *metrics.Collection
+
+	activeMu    sync.Mutex
+	active      string
+	activeKnown bool
 }
 
 // NewSocketProxy creates the proxy. metrics may be nil, in which case no
@@ -171,7 +175,7 @@ func (p *SocketProxy) probeAll(ctx context.Context) {
 		if err := probeEndpoint(ctx, ep.addr); err != nil {
 			ep.markDown(time.Now().Add(failoverCooldown))
 			if !wasDown {
-				p.logger.WarnContext(ctx, "cardano node unavailable, failing over",
+				p.logger.WarnContext(ctx, "cardano node unavailable",
 					slog.String("remote", ep.addr),
 					slog.String("error", err.Error()),
 				)
@@ -183,7 +187,7 @@ func (p *SocketProxy) probeAll(ctx context.Context) {
 			p.logger.InfoContext(ctx, "cardano node available again", slog.String("remote", ep.addr))
 		}
 	}
-	p.updateMetrics()
+	p.updateState()
 }
 
 // probeEndpoint connects to addr and holds the connection for probeHoldTime.
@@ -210,31 +214,53 @@ func probeEndpoint(ctx context.Context, addr string) error {
 	return fmt.Errorf("connection closed by the remote, node socket unavailable: %w", err)
 }
 
-// updateMetrics publishes the up/active gauge for each endpoint. The active
-// endpoint is the highest-priority one that is currently reachable, matching
-// what dialRemote would pick.
-func (p *SocketProxy) updateMetrics() {
-	if p.metrics == nil {
-		return
-	}
+// updateState publishes the up/active gauge for each endpoint and logs when
+// the active endpoint changes. The active endpoint is the highest-priority one
+// that is currently reachable, matching what dialRemote would pick. The health
+// probe and proxied calls run it concurrently, so selection, metrics and logs
+// happen under one lock to keep transitions in order.
+func (p *SocketProxy) updateState() {
+	p.activeMu.Lock()
+	defer p.activeMu.Unlock()
 
 	now := time.Now()
-	activeSet := false
+	active := ""
 	for _, ep := range p.endpoints {
 		up := !ep.isDown(now)
-		if up {
-			p.metrics.CardanoNodeUp.WithLabelValues(ep.addr).Set(1)
-		} else {
-			p.metrics.CardanoNodeUp.WithLabelValues(ep.addr).Set(0)
+		isActive := up && active == ""
+		if isActive {
+			active = ep.addr
 		}
-
-		active := 0.0
-		if up && !activeSet {
-			active = 1
-			activeSet = true
+		if p.metrics == nil {
+			continue
 		}
-		p.metrics.CardanoNodeActive.WithLabelValues(ep.addr).Set(active)
+		p.metrics.CardanoNodeUp.WithLabelValues(ep.addr).Set(boolToFloat(up))
+		p.metrics.CardanoNodeActive.WithLabelValues(ep.addr).Set(boolToFloat(isActive))
 	}
+
+	if p.activeKnown && p.active == active {
+		return
+	}
+	p.active, p.activeKnown = active, true
+	if active == "" {
+		p.logger.Error("no cardano node available")
+		return
+	}
+	p.logger.Info("using cardano node", slog.String("remote", active))
+}
+
+// activeRemote returns the endpoint currently in use, or "" if none is up.
+func (p *SocketProxy) activeRemote() string {
+	p.activeMu.Lock()
+	defer p.activeMu.Unlock()
+	return p.active
+}
+
+func boolToFloat(b bool) float64 {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 // dialRemote connects to the first reachable remote, trying them in configured
@@ -242,7 +268,7 @@ func (p *SocketProxy) updateMetrics() {
 // failoverCooldown so we don't repeatedly pay the dial timeout on a down node;
 // if every endpoint is in cooldown they are all retried as a last resort.
 func (p *SocketProxy) dialRemote(ctx context.Context) (*remoteEndpoint, net.Conn, error) {
-	defer p.updateMetrics()
+	defer p.updateState()
 
 	now := time.Now()
 
@@ -320,9 +346,9 @@ func (p *SocketProxy) proxy(ctx context.Context, local net.Conn) {
 	// its node socket is not. Skip this endpoint so the next call fails over.
 	if first.fromRemote && first.bytes == 0 {
 		ep.markDown(time.Now().Add(failoverCooldown))
-		p.updateMetrics()
-		p.logger.WarnContext(ctx, "remote closed the connection without answering, failing over",
+		p.logger.WarnContext(ctx, "remote closed the connection without answering",
 			slog.String("remote", ep.addr),
 		)
+		p.updateState()
 	}
 }

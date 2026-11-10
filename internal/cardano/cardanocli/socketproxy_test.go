@@ -295,3 +295,26 @@ func TestSocketProxy_MarksDownRemoteThatClosesWithoutAnswering(t *testing.T) {
 	require.Eventually(t, func() bool { return proxy.endpoints[0].isDown(time.Now()) }, 2*time.Second, 10*time.Millisecond)
 	require.Equal(t, "second", roundtrip(t, proxy.SocketPath(), "second"))
 }
+
+func TestSocketProxy_TracksActiveNode(t *testing.T) {
+	t.Parallel()
+
+	dead := startDeadBridge(t)
+	good := startEchoServer(t)
+
+	socketPath := filepath.Join(t.TempDir(), "proxy.sock")
+	proxy, err := NewSocketProxy(t.Context(), socketPath, []RemoteNode{dead, good}, nil)
+	require.NoError(t, err)
+
+	proxy.probeAll(t.Context())
+	require.Equal(t, good.addr(), proxy.activeRemote())
+
+	proxy.endpoints[0].clearDown()
+	proxy.updateState()
+	require.Equal(t, dead.addr(), proxy.activeRemote(), "the primary is used again once it is up")
+
+	proxy.endpoints[0].markDown(time.Now().Add(time.Minute))
+	proxy.endpoints[1].markDown(time.Now().Add(time.Minute))
+	proxy.updateState()
+	require.Empty(t, proxy.activeRemote())
+}
