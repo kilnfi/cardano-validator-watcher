@@ -125,6 +125,7 @@ jobs:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: "dist/*.tar.gz"
           tag: ${{ github.ref_name }}
+          release_name: ${{ github.ref_name }}
           file_glob: true
           overwrite: true
           # release candidates must not become "Latest" nor the base of the release notes draft
