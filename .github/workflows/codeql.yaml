@@ -4,15 +4,12 @@ on:
   push:
     branches:
       - main
-  pull_request:
-    branches:
-      - main
   schedule:
     - cron: "0 6 * * 1"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -20,9 +17,8 @@ permissions:
 jobs:
   analyze:
     name: analyze (${{ matrix.language }})
-    # Results upload calls the GitHub API, subject to the org IP allow list: pull requests
-    # analyze on ubuntu-latest without uploading, main and the weekly run upload from fixed-egress
-    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'fixed-egress-4c-16g' }}
+    # The CodeQL action calls the GitHub API, subject to the org IP allow list
+    runs-on: fixed-egress-4c-16g
     permissions:
       contents: read
       security-events: write # upload results to code scanning
@@ -57,4 +53,3 @@ jobs:
       - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           category: /language:${{ matrix.language }}
-          upload: ${{ github.event_name == 'pull_request' && 'never' || 'always' }}
