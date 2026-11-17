@@ -16,7 +16,16 @@ env:
   REGISTRY: oci://ghcr.io/kilnfi/charts
 
 jobs:
+  approve:
+    name: Approve release
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - name: Release approved
+        run: echo "Releasing ${GITHUB_REF_NAME}"
+
   binaries:
+    needs: approve
     strategy:
       fail-fast: false
       matrix:
