@@ -108,7 +108,7 @@ jobs:
   release_binaries:
     name: Upload binaries to GitHub Release
     needs: binaries
-    runs-on: ubuntu-latest
+    runs-on: fixed-egress-4c-16g
     permissions:
       contents: write
     steps:
@@ -146,7 +146,7 @@ jobs:
         # amd64 only: cardano-cli / cncli are downloaded for x86_64 and cncli has no linux arm64 release
         arch:
           - amd64
-    runs-on: ubuntu-latest
+    runs-on: fixed-egress-4c-16g
     permissions:
       contents: read
       packages: write
@@ -206,7 +206,7 @@ jobs:
           retention-days: 1
 
   merge:
-    runs-on: ubuntu-latest
+    runs-on: fixed-egress-4c-16g
     needs:
       - images
     permissions:
