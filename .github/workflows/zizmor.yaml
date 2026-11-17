@@ -10,6 +10,10 @@ on:
   schedule:
     - cron: "0 6 * * 1"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
@@ -34,8 +38,8 @@ jobs:
     # SARIF upload and online audits call the GitHub API, subject to the org IP allow list
     runs-on: fixed-egress-4c-16g
     permissions:
-      contents: read
-      security-events: write
+      contents: read # checkout
+      security-events: write # upload SARIF to code scanning
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:

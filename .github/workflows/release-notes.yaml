@@ -8,14 +8,19 @@ on:
     branches:
       - main
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
 jobs:
   release-notes:
+    name: release-notes
     permissions:
-      contents: write
-      pull-requests: write
+      contents: write # draft releases
+      pull-requests: write # release-drafter autolabeler
     runs-on: fixed-egress-4c-16g
     steps:
       - name: Checkout repository

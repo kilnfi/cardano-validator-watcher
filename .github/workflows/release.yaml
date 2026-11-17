@@ -5,6 +5,10 @@ on:
     tags:
       - "*"
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
@@ -25,6 +29,7 @@ jobs:
         run: echo "Releasing ${GITHUB_REF_NAME}"
 
   binaries:
+    name: binaries
     needs: approve
     strategy:
       fail-fast: false
@@ -119,7 +124,7 @@ jobs:
     needs: binaries
     runs-on: fixed-egress-4c-16g
     permissions:
-      contents: write
+      contents: write # upload release assets
     steps:
       - name: Download binary artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -148,6 +153,7 @@ jobs:
           make_latest: ${{ !contains(github.ref_name, '-rc') }}
 
   images:
+    name: images
     needs: binaries
     strategy:
       fail-fast: false
@@ -157,8 +163,8 @@ jobs:
           - amd64
     runs-on: fixed-egress-4c-16g
     permissions:
-      contents: read
-      packages: write
+      contents: read # checkout
+      packages: write # push images to ghcr.io
     steps:
       - name: Checkout repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -215,11 +221,12 @@ jobs:
           retention-days: 1
 
   merge:
+    name: merge
     runs-on: fixed-egress-4c-16g
     needs:
       - images
     permissions:
-      packages: write
+      packages: write # push images to ghcr.io
       id-token: write # needed for cosign keyless signing
     env:
       REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cardano-validator-watcher

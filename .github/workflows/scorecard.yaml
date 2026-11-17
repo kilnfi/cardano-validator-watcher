@@ -8,6 +8,10 @@ on:
     - cron: "0 6 * * 1"
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions: {}
 
 jobs:
@@ -16,9 +20,9 @@ jobs:
     # GitHub API calls are subject to the org IP allow list
     runs-on: fixed-egress-4c-16g
     permissions:
-      contents: read
-      actions: read
-      security-events: write
+      contents: read # checkout
+      actions: read # scorecard reads workflow runs
+      security-events: write # upload SARIF to code scanning
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
